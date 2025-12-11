@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         三风格极致UI终端 (Std API) - Enhanced & Multiline & Dynamic Character Stats
-// @version      30.0
-// @description  Full UI (v27) + Multiline Support + Dynamic Stats Bars + Refresh Button
+// @version      30.1
+// @description  Full UI + Dynamic Stats Bars (First Position) + Color Coded + Mobile Friendly Refresh
 // @author       Custom & Gemini & Assistant
 // @match        */*
 // ==/UserScript==
@@ -17,10 +17,9 @@
         theme: 'luxury', 
         scale: 1.0,
         fontFamily: '',
-        debug: true // 默认开启debug
+        debug: true
     };
 
-    // 存储从内容中提取的动态角色统计数据
     let characterStats = {};
 
     // --- Utilities ---
@@ -53,11 +52,10 @@
         console.log(`%c${prefix} ${msg}`, styles[type] || styles.info);
     }
 
-    // --- 动态提取JSON变量数据 (新增) ---
+    // --- 动态提取JSON变量数据 ---
     function extractDynamicStats(text) {
         log('→ Extracting dynamic stats from content...', 'info');
         try {
-            // 尝试匹配JSON对象（可能在文本开头）
             const jsonMatch = text.match(/^\s*(\{[\s\S]*?\})\s*(?=状态栏|$)/);
             if (!jsonMatch) {
                 log('✗ No JSON data found in content', 'warning');
@@ -70,7 +68,6 @@
             const parsed = JSON.parse(jsonStr);
             log('✓ JSON parsed successfully', 'success');
             
-            // 转换数据结构：从MVU格式 [value, description] 提取实际值
             const result = {};
             for (let charName in parsed) {
                 result[charName] = {};
@@ -78,7 +75,6 @@
                 
                 for (let attrKey in charData) {
                     const attrValue = charData[attrKey];
-                    // MVU格式: [数值, "描述"]
                     if (Array.isArray(attrValue) && attrValue.length >= 2) {
                         result[charName][attrKey] = {
                             value: parseFloat(attrValue[0]) || 0,
@@ -108,7 +104,6 @@
         }
     }
 
-    // 从标签中提取最大值，如 "施虐/支配倾向值(0-100)" -> 100
     function extractMaxFromLabel(label) {
         const match = label.match(/\((\d+)-(\d+)\)/);
         if (match) {
@@ -117,7 +112,7 @@
         return 100;
     }
 
-    // --- CSS (Full v27 Style + Dynamic Character Stats Bars + Refresh Button) ---
+    // --- CSS ---
     const STYLES = `
     :root { --hud-font-main: 'Segoe UI', 'Microsoft YaHei', sans-serif; --hud-scale: 1; }
     .hud-root {
@@ -128,26 +123,40 @@
         transition: all 0.3s ease;
     }
 
-    /* 刷新按钮样式 */
+    /* 刷新按钮样式 - 移动端优化 */
     .hud-refresh-btn {
         position: absolute;
-        top: 8px;
-        right: 8px;
-        width: 24px;
-        height: 24px;
+        top: 10px;
+        right: 10px;
+        width: 32px;
+        height: 32px;
         border-radius: 50%;
         display: flex;
         align-items: center;
         justify-content: center;
         cursor: pointer;
-        opacity: 0.4;
+        opacity: 0.6;
         transition: all 0.3s ease;
         z-index: 10;
-        font-size: 12px;
+        font-size: 14px;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.2);
     }
     .hud-refresh-btn:hover {
         opacity: 1;
-        transform: rotate(180deg);
+        transform: rotate(180deg) scale(1.1);
+    }
+    .hud-refresh-btn:active {
+        transform: rotate(180deg) scale(0.95);
+    }
+
+    /* 移动端触摸优化 */
+    @media (max-width: 768px) {
+        .hud-refresh-btn {
+            width: 36px;
+            height: 36px;
+            opacity: 0.7;
+            font-size: 16px;
+        }
     }
 
     /* --- Theme 1: Luxury (Business/Gold) --- */
@@ -180,9 +189,17 @@
     .hud-theme-luxury .hud-btn:hover { background: linear-gradient(90deg, rgba(196, 164, 124, 0.15), transparent); }
     .hud-theme-luxury .hud-idx { color: #d4af37; border: 1px solid #d4af37; border-radius: 4px; height: 20px; width: 20px; line-height: 18px; font-size: 0.8em; }
     .hud-theme-luxury .hud-stat-bar-container { background: rgba(0,0,0,0.4); border: 1px solid rgba(196, 164, 124, 0.2); }
-    .hud-theme-luxury .hud-stat-bar-fill { background: linear-gradient(90deg, #d4af37, #c4a47c); }
-    .hud-theme-luxury .hud-refresh-btn { background: rgba(196, 164, 124, 0.3); color: #d4af37; }
-    .hud-theme-luxury .hud-refresh-btn:hover { background: rgba(196, 164, 124, 0.6); box-shadow: 0 0 10px rgba(212, 175, 55, 0.5); }
+    
+    /* Luxury主题 - 渐变金色系配色 */
+    .hud-theme-luxury .hud-stat-bar-fill.color-0 { background: linear-gradient(90deg, #d4af37, #c4a47c); }
+    .hud-theme-luxury .hud-stat-bar-fill.color-1 { background: linear-gradient(90deg, #b8860b, #daa520); }
+    .hud-theme-luxury .hud-stat-bar-fill.color-2 { background: linear-gradient(90deg, #cd7f32, #e6be8a); }
+    .hud-theme-luxury .hud-stat-bar-fill.color-3 { background: linear-gradient(90deg, #918151, #c9b037); }
+    .hud-theme-luxury .hud-stat-bar-fill.color-4 { background: linear-gradient(90deg, #967117, #d4af37); }
+    .hud-theme-luxury .hud-stat-bar-fill.color-5 { background: linear-gradient(90deg, #aa771c, #ffd700); }
+    
+    .hud-theme-luxury .hud-refresh-btn { background: rgba(196, 164, 124, 0.4); color: #d4af37; border: 1px solid rgba(212, 175, 55, 0.3); }
+    .hud-theme-luxury .hud-refresh-btn:hover { background: rgba(196, 164, 124, 0.7); box-shadow: 0 0 12px rgba(212, 175, 55, 0.6); }
 
     /* --- Theme 2: Floral (Fresh/Nature) --- */
     .hud-theme-floral {
@@ -211,9 +228,17 @@
     .hud-theme-floral .hud-btn:hover { background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,0.08); transform: translateX(2px); }
     .hud-theme-floral .hud-idx { background: #78909c; border-radius: 50%; width: 24px; height: 24px; box-shadow: 1px 2px 4px rgba(0,0,0,0.2); }
     .hud-theme-floral .hud-stat-bar-container { background: #e0e0e0; border: 1px solid #c8e6c9; }
-    .hud-theme-floral .hud-stat-bar-fill { background: linear-gradient(90deg, #66bb6a, #43a047); }
-    .hud-theme-floral .hud-refresh-btn { background: rgba(120, 144, 156, 0.3); color: #558b2f; }
-    .hud-theme-floral .hud-refresh-btn:hover { background: rgba(120, 144, 156, 0.6); box-shadow: 0 0 8px rgba(85, 139, 47, 0.4); }
+    
+    /* Floral主题 - 清新自然配色 */
+    .hud-theme-floral .hud-stat-bar-fill.color-0 { background: linear-gradient(90deg, #66bb6a, #43a047); }
+    .hud-theme-floral .hud-stat-bar-fill.color-1 { background: linear-gradient(90deg, #42a5f5, #1e88e5); }
+    .hud-theme-floral .hud-stat-bar-fill.color-2 { background: linear-gradient(90deg, #26a69a, #00897b); }
+    .hud-theme-floral .hud-stat-bar-fill.color-3 { background: linear-gradient(90deg, #ab47bc, #8e24aa); }
+    .hud-theme-floral .hud-stat-bar-fill.color-4 { background: linear-gradient(90deg, #ef5350, #e53935); }
+    .hud-theme-floral .hud-stat-bar-fill.color-5 { background: linear-gradient(90deg, #ff7043, #f4511e); }
+    
+    .hud-theme-floral .hud-refresh-btn { background: rgba(120, 144, 156, 0.4); color: #558b2f; border: 1px solid rgba(85, 139, 47, 0.3); }
+    .hud-theme-floral .hud-refresh-btn:hover { background: rgba(120, 144, 156, 0.7); box-shadow: 0 0 10px rgba(85, 139, 47, 0.5); }
 
     /* --- Theme 3: Candy (Pop/Vibrant) --- */
     .hud-theme-candy {
@@ -265,18 +290,26 @@
         width: 26px; height: 26px; border: 2px solid #fff; box-shadow: 1px 1px 3px rgba(0,0,0,0.2);
     }
     .hud-theme-candy .hud-stat-bar-container { background: #ffc1e3; border: 1px solid #ff80ab; }
-    .hud-theme-candy .hud-stat-bar-fill { background: linear-gradient(90deg, #ff4081, #f50057); }
-    .hud-theme-candy .hud-refresh-btn { background: rgba(255, 64, 129, 0.3); color: #c51162; }
-    .hud-theme-candy .hud-refresh-btn:hover { background: rgba(255, 64, 129, 0.6); box-shadow: 0 0 10px rgba(197, 17, 98, 0.5); }
+    
+    /* Candy主题 - 活力糖果配色 */
+    .hud-theme-candy .hud-stat-bar-fill.color-0 { background: linear-gradient(90deg, #ff4081, #f50057); }
+    .hud-theme-candy .hud-stat-bar-fill.color-1 { background: linear-gradient(90deg, #e040fb, #d500f9); }
+    .hud-theme-candy .hud-stat-bar-fill.color-2 { background: linear-gradient(90deg, #00bcd4, #00acc1); }
+    .hud-theme-candy .hud-stat-bar-fill.color-3 { background: linear-gradient(90deg, #ffd600, #ffc400); }
+    .hud-theme-candy .hud-stat-bar-fill.color-4 { background: linear-gradient(90deg, #ff6e40, #ff5722); }
+    .hud-theme-candy .hud-stat-bar-fill.color-5 { background: linear-gradient(90deg, #69f0ae, #00e676); }
+    
+    .hud-theme-candy .hud-refresh-btn { background: rgba(255, 64, 129, 0.4); color: #c51162; border: 2px solid rgba(197, 17, 98, 0.3); }
+    .hud-theme-candy .hud-refresh-btn:hover { background: rgba(255, 64, 129, 0.7); box-shadow: 0 0 12px rgba(197, 17, 98, 0.6); }
 
     /* --- Dynamic Character Stat Bar Styles --- */
     .hud-stat-bar-wrapper {
         display: grid;
         grid-template-columns: repeat(2, 1fr);
         gap: 6px 10px;
-        margin-top: 10px;
-        padding-top: 10px;
-        border-top: 1px solid rgba(128,128,128,0.2);
+        margin-bottom: 12px;
+        padding-bottom: 12px;
+        border-bottom: 1px solid rgba(128,128,128,0.2);
     }
     .hud-stat-bar-wrapper.single-col {
         grid-template-columns: 1fr;
@@ -373,7 +406,7 @@
 
     function initScript() {
         log('═══════════════════════════════════════', 'info');
-        log('🚀 Initializing HUD Script v30.0...', 'info');
+        log('🚀 Initializing HUD Script v30.1...', 'info');
         log('═══════════════════════════════════════', 'info');
         
         loadSettings();
@@ -398,12 +431,11 @@
             processChatDOM('Init');
             log('✓ Initial processing complete', 'success');
             log('═══════════════════════════════════════', 'success');
-            log('🎉 HUD Script v30.0 LOADED SUCCESSFULLY!', 'success');
+            log('🎉 HUD Script v30.1 LOADED SUCCESSFULLY!', 'success');
             log('═══════════════════════════════════════', 'success');
             
-            // 用户可见的加载提示
             if (typeof toastr !== 'undefined') {
-                toastr.success('美化终端 v30.0 加载成功！支持动态变量显示', '终端系统', {timeOut: 3000});
+                toastr.success('美化终端 v30.1 加载成功！', '终端系统', {timeOut: 3000});
             }
         }, 1000);
     }
@@ -416,7 +448,6 @@
     function initGlobalListeners() {
         const $chat = $('#chat');
         
-        // 折叠/展开人物列表
         $chat.on('click', '.hud-users-toggle', function(e) {
             e.stopPropagation(); e.preventDefault();
             const $bar = $(this);
@@ -426,7 +457,6 @@
             log('→ Users list toggled', 'info');
         });
 
-        // 点击选项
         $chat.on('click', '.hud-btn', function(e) {
             e.stopPropagation(); e.preventDefault();
             const fullText = decodeURIComponent($(this).attr('data-full-text'));
@@ -438,7 +468,6 @@
             }
         });
 
-        // 刷新按钮 (新增)
         $chat.on('click', '.hud-refresh-btn', function(e) {
             e.stopPropagation(); e.preventDefault();
             log('═══════════════════════════════════════', 'info');
@@ -450,11 +479,8 @@
             
             if ($small.length) {
                 log('→ Found hidden content, re-processing...', 'info');
-                // 重置处理标记
                 $small.removeAttr('data-hud-processed').removeClass('hud-hide');
-                // 移除当前HUD
                 $root.remove();
-                // 重新处理
                 setTimeout(() => {
                     processChatDOM('Refresh');
                     log('✓ Refresh complete!', 'success');
@@ -513,7 +539,7 @@
         }
     }
 
-    // --- Advanced Parser (Multi-line Support + Dynamic Stats) ---
+    // --- Advanced Parser ---
     function parseContent(domEl) {
         log('→ Parsing content...', 'info');
         if (!domEl) return null;
@@ -523,7 +549,6 @@
         temp.innerHTML = html;
         const fullText = temp.innerText || temp.textContent;
         
-        // 首先尝试提取JSON变量数据
         extractDynamicStats(fullText);
         
         const lines = fullText.split('\n').map(l => l.trim()).filter(l => l);
@@ -537,7 +562,6 @@
         let skipJsonLines = false;
 
         for (let line of lines) {
-            // 跳过JSON数据行
             if (line.startsWith('{') || skipJsonLines) {
                 if (line.includes('}')) skipJsonLines = false;
                 else skipJsonLines = true;
@@ -620,7 +644,7 @@
         return [str.substring(0, match.index).trim(), str.substring(match.index + match[0].length).trim()];
     }
 
-    // --- 生成动态数值条HTML (修改：支持动态属性) ---
+    // --- 生成动态数值条HTML (修改：添加颜色类) ---
     function renderStatBars(characterName) {
         log(`→ Rendering stat bars for: ${characterName}`, 'data');
         
@@ -637,24 +661,26 @@
 
         if (statCount === 0) return '';
 
-        // 根据属性数量决定布局：1-2个单列，3-4个双列，5-6个双列
         const layoutClass = statCount <= 2 ? 'single-col' : '';
         
         let html = `<div class="hud-stat-bar-wrapper ${layoutClass}">`;
         
-        statKeys.forEach(key => {
+        statKeys.forEach((key, index) => {
             const stat = stats[key];
-            const shortLabel = key; // 使用简短的key作为标签
+            const shortLabel = key;
             const value = stat.value;
             const max = stat.max;
             const safeValue = Math.max(0, Math.min(max, value || 0));
             const percentage = (safeValue / max) * 100;
             
+            // 为每个数值条分配颜色类（循环使用0-5）
+            const colorClass = `color-${index % 6}`;
+            
             html += `
                 <div class="hud-stat-bar">
                     <div class="hud-stat-bar-label" title="${stat.label}">${shortLabel}</div>
                     <div class="hud-stat-bar-container">
-                        <div class="hud-stat-bar-fill" style="width: ${percentage}%">
+                        <div class="hud-stat-bar-fill ${colorClass}" style="width: ${percentage}%">
                             <div class="hud-stat-bar-text">${safeValue}/${max}</div>
                         </div>
                     </div>
@@ -666,12 +692,11 @@
         return html;
     }
 
-    // --- Rendering ---
+    // --- Rendering (修改：调整渲染顺序) ---
     function renderHUD(data) {
         log('→ Rendering HUD HTML...', 'info');
         let html = `<div class="hud-root">`;
         
-        // 添加刷新按钮
         html += `<div class="hud-refresh-btn" title="刷新状态栏"><i class="fa-solid fa-rotate-right"></i></div>`;
 
         // 1. Status Bar
@@ -686,12 +711,17 @@
             html += `</div>`;
         }
 
-        // 2. Users (修改：使用动态属性条)
+        // 2. Users (修改：数值条放在第一位)
         if (data.users.length) {
             html += `<div class="hud-users-toggle"><span><i class="fa-solid fa-users"></i> 人物列表 (${data.users.length})</span><i class="fa-solid fa-chevron-down"></i></div>`;
             html += `<div class="hud-users-scroll collapsed">`;
             data.users.forEach(u => {
                 let name = u['名字'] || u['Name'] || 'Unknown';
+                
+                // 先渲染数值条（放在第一、二行）
+                const statBars = renderStatBars(name);
+                
+                // 再渲染其他属性
                 let props = '';
                 for (let k in u) {
                     if (k === '名字' || k === 'Name') continue;
@@ -703,10 +733,8 @@
                     props += `<div class="hud-kv"><div class="hud-tag-key"><i class="fa-solid ${icon}"></i> ${k}</div><div class="hud-tag-val">${u[k]}</div></div>`;
                 }
                 
-                // 动态渲染属性条
-                const statBars = renderStatBars(name);
-                
-                html += `<div class="hud-user-card"><div class="hud-user-name">${name}</div>${props}${statBars}</div>`;
+                // 顺序：名字 -> 数值条 -> 其他属性
+                html += `<div class="hud-user-card"><div class="hud-user-name">${name}</div>${statBars}${props}</div>`;
             });
             html += `</div>`;
         }
@@ -748,11 +776,11 @@
         }
         if ($(`#${menuItemId}`).length > 0) return;
 
-        const btn = $(`<div class="list-group-item flex-container flexGap5 interactable" id="${menuItemId}"><div class="fa-fw fa-solid fa-palette"></div><span>美化终端设置 v30</span></div>`);
+        const btn = $(`<div class="list-group-item flex-container flexGap5 interactable" id="${menuItemId}"><div class="fa-fw fa-solid fa-palette"></div><span>美化终端设置 v30.1</span></div>`);
         btn.on('click', () => {
             const html = `
             <div style="padding:15px; display:flex; flex-direction:column; gap:15px;">
-                <h3>终端样式设置 (Std API v30) - 支持动态变量</h3>
+                <h3>终端样式设置 (v30.1) - 彩色数值条</h3>
                 <div><label>主题风格:</label><select id="hud-theme-select" class="text_pole" style="width:100%;margin-top:5px;"><option value="luxury" ${settings.theme==='luxury'?'selected':''}>商务奢华 (Dark Gold)</option><option value="floral" ${settings.theme==='floral'?'selected':''}>清新花艺 (Nature)</option><option value="candy" ${settings.theme==='candy'?'selected':''}>糖果波普 (Vibrant)</option></select></div>
                 <div><label>字体缩放 (${settings.scale}):</label><input type="range" id="hud-scale-range" min="0.8" max="1.3" step="0.05" value="${settings.scale}" style="width:100%"></div>
                 <div><label>自定义字体:</label><input type="text" id="hud-font-input" class="text_pole" placeholder="留空默认" value="${settings.fontFamily}" style="width:100%"></div>
@@ -760,11 +788,11 @@
                 <label class="checkbox_label"><input type="checkbox" id="hud-debug" ${settings.debug?'checked':''}> 启用调试信息 (Console)</label>
                 <button id="hud-force-refresh" class="menu_button">🔄 强制重绘全部 HUD</button>
                 <div style="padding:10px; background:#f5f5f5; border-radius:5px; font-size:0.9em;">
-                    <strong>💡 v30 新功能:</strong><br>
-                    • 自动识别JSON变量并显示为数值条<br>
-                    • 每个状态栏右上角有刷新按钮<br>
-                    • 支持任意数量的角色属性<br>
-                    • 完整的Debug日志系统
+                    <strong>💡 v30.1 更新:</strong><br>
+                    • 数值条移至人物卡片第一、二行<br>
+                    • 不同属性使用不同颜色区分<br>
+                    • 刷新按钮适配移动端（更大更易点击）<br>
+                    • 每个主题有独特的配色方案
                 </div>
             </div>`;
             SillyTavern.callGenericPopup(html, 1, '', {wide:false});
