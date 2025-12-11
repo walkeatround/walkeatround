@@ -1,15 +1,15 @@
 // ==UserScript==
 // @name         三风格极致UI终端 (Std API) - Enhanced & Multiline & Character Stats
-// @version      30.0
-// @description  Full UI (v27) + Multiline Support + Dynamic Character Stats with JSON Parse + Refresh Button
-// @author       Custom & Gemini & Enhanced
+// @version      29.0
+// @description  Full UI (v27) + Multiline Support + W&红莲 Stats Bars
+// @author       Custom & Gemini
 // @match        */*
 // ==/UserScript==
 
 (function () {
     'use strict';
 
-    const SCRIPT_ID = 'tri_hud_std_v30_stats';
+    const SCRIPT_ID = 'tri_hud_std_v29_stats';
     const SETTINGS_KEY = 'tri_hud_settings_v26';
     
     let settings = {
@@ -17,10 +17,10 @@
         theme: 'luxury', 
         scale: 1.0,
         fontFamily: '',
-        debug: true  // 默认开启debug
+        debug: false
     };
 
-    // 存储从JSON提取的角色统计数据
+    // 存储从MVU获取的角色统计数据
     let characterStats = {};
 
     // --- Utilities ---
@@ -28,117 +28,74 @@
         try {
             const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY));
             if (saved) settings = { ...settings, ...saved };
-            log('[设置] 加载成功');
-        } catch(e) { 
-            console.error('[设置] 加载失败:', e); 
-        }
+        } catch(e) { console.error(e); }
     }
 
     function saveSettings() {
         localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
         $('.hud-root').each(function() { applySettingsToElement($(this)); });
-        log('[设置] 保存成功');
     }
 
-    function log(msg, data) {
-        if (settings.debug) {
-            if (data !== undefined) {
-                console.log(`[HUD-Debug] ${msg}`, data);
-            } else {
-                console.log(`[HUD-Debug] ${msg}`);
-            }
-        }
+    function log(msg) {
+        if (settings.debug) console.log(`[HUD-Std] ${msg}`);
     }
 
-    // --- JSON解析工具函数 ---
-    function extractJSONFromText(text) {
-        log('[JSON解析] 开始提取JSON数据');
-        try {
-            // 尝试匹配JSON对象 {...}
-            const jsonMatch = text.match(/\{[\s\S]*?".*?"[\s\S]*?\}/);
-            if (jsonMatch) {
-                const jsonStr = jsonMatch[0];
-                log('[JSON解析] 找到JSON字符串', jsonStr);
-                const parsed = JSON.parse(jsonStr);
-                log('[JSON解析] 解析成功', parsed);
-                return parsed;
-            }
-            log('[JSON解析] 未找到JSON数据');
-            return null;
-        } catch(e) {
-            console.error('[JSON解析] 解析失败:', e);
-            return null;
-        }
-    }
-
-    // --- 处理MVU变量格式 ---
+    // --- MVU变量获取工具函数 ---
     const MvuUtils = {
         isMvuVar: (v) => Array.isArray(v) && v.length >= 2 && typeof v[1] === 'string',
         safeFormat: (val) => {
             if (val === null || val === undefined) return 0;
             if (typeof val === 'number') return val;
             if (typeof val === 'string') return parseFloat(val) || 0;
-            if (Array.isArray(val) && val.length >= 1) {
-                // MVU格式 [value, description]
-                return MvuUtils.safeFormat(val[0]);
-            }
             return 0;
-        },
-        getDescription: (val) => {
-            if (Array.isArray(val) && val.length >= 2 && typeof val[1] === 'string') {
-                return val[1];
-            }
-            return '';
         }
     };
 
-    // --- 从JSON提取角色统计数据 ---
-    function parseCharacterStatsFromJSON(jsonData) {
-        log('[数据提取] 开始处理JSON数据', jsonData);
-        const stats = {};
-        
-        if (!jsonData || typeof jsonData !== 'object') {
-            log('[数据提取] 无效的JSON数据');
-            return stats;
-        }
-        
-        // 遍历每个角色
-        for (let charName in jsonData) {
-            const charData = jsonData[charName];
-            if (typeof charData !== 'object') continue;
-            
-            stats[charName] = {};
-            log(`[数据提取] 处理角色: ${charName}`);
-            
-            // 遍历角色的所有属性
-            for (let attrKey in charData) {
-                const attrValue = charData[attrKey];
-                const numValue = MvuUtils.safeFormat(attrValue);
-                const description = MvuUtils.getDescription(attrValue);
-                
-                stats[charName][attrKey] = {
-                    value: numValue,
-                    description: description,
-                    max: 100  // 默认最大值，可以从description中提取
-                };
-                
-                // 尝试从描述中提取最大值
-                if (description) {
-                    const maxMatch = description.match(/\(0-(\d+)\)/);
-                    if (maxMatch) {
-                        stats[charName][attrKey].max = parseInt(maxMatch[1]);
-                    }
-                }
-                
-                log(`  属性 ${attrKey}: ${numValue}/${stats[charName][attrKey].max} - ${description}`);
+    // --- 从MVU获取角色统计数据 ---
+    function loadCharacterStats() {
+        try {
+            if (typeof getAllVariables === 'undefined') {
+                log('getAllVariables not available');
+                return;
             }
+            
+            const all_variables = getAllVariables();
+            const statData = _.get(all_variables, 'stat_data', {});
+            
+            // 获取W的数据
+            const wData = statData['W'] || {};
+            const wS_raw = wData['S'];
+            const wM_raw = wData['M'];
+            const wS = MvuUtils.isMvuVar(wS_raw) ? wS_raw[0] : wS_raw;
+            const wM = MvuUtils.isMvuVar(wM_raw) ? wM_raw[0] : wM_raw;
+            
+            // 获取红莲的数据
+            const hlData = statData['红莲'] || {};
+            const hlS_raw = hlData['S'];
+            const hlM_raw = hlData['M'];
+            const hlS = MvuUtils.isMvuVar(hlS_raw) ? hlS_raw[0] : hlS_raw;
+            const hlM = MvuUtils.isMvuVar(hlM_raw) ? hlM_raw[0] : hlM_raw;
+            
+            // 存储数据
+            characterStats = {
+                'W': { 
+                    S: MvuUtils.safeFormat(wS), 
+                    M: MvuUtils.safeFormat(wM) 
+                },
+                '红莲': { 
+                    S: MvuUtils.safeFormat(hlS), 
+                    M: MvuUtils.safeFormat(hlM) 
+                }
+            };
+            
+            log(`Loaded character stats: W(S:${characterStats['W'].S}, M:${characterStats['W'].M}), 红莲(S:${characterStats['红莲'].S}, M:${characterStats['红莲'].M})`);
+        } catch(e) {
+            console.error('[HUD] Failed to load character stats:', e);
+            characterStats = {};
         }
-        
-        log('[数据提取] 完成，提取到的数据:', stats);
-        return stats;
     }
 
-    // --- CSS (Full v27 Style + Character Stats Bars + Refresh Button) ---
+    // --- CSS (Full v27 Style + Character Stats Bars) ---
     const STYLES = `
     :root { --hud-font-main: 'Segoe UI', 'Microsoft YaHei', sans-serif; --hud-scale: 1; }
     .hud-root {
@@ -159,7 +116,7 @@
         border-left: 4px solid var(--border);
         border-right: 1px solid rgba(196, 164, 124, 0.3);
     }
-    .hud-theme-luxury::before {
+    .hud-theme-luxury::before { /* Texture */
         content: ''; position: absolute; top:0; left:0; right:0; bottom:0; opacity: 0.05;
         background: repeating-linear-gradient(45deg, #000 0px, #000 2px, transparent 2px, transparent 6px);
         pointer-events: none;
@@ -180,8 +137,6 @@
     .hud-theme-luxury .hud-idx { color: #d4af37; border: 1px solid #d4af37; border-radius: 4px; height: 20px; width: 20px; line-height: 18px; font-size: 0.8em; }
     .hud-theme-luxury .hud-stat-bar-container { background: rgba(0,0,0,0.4); border: 1px solid rgba(196, 164, 124, 0.2); }
     .hud-theme-luxury .hud-stat-bar-fill { background: linear-gradient(90deg, #d4af37, #c4a47c); }
-    .hud-theme-luxury .hud-refresh-btn { color: #c4a47c; }
-    .hud-theme-luxury .hud-refresh-btn:hover { color: #d4af37; background: rgba(196, 164, 124, 0.1); }
 
     /* --- Theme 2: Floral (Fresh/Nature) --- */
     .hud-theme-floral {
@@ -211,10 +166,8 @@
     .hud-theme-floral .hud-idx { background: #78909c; border-radius: 50%; width: 24px; height: 24px; box-shadow: 1px 2px 4px rgba(0,0,0,0.2); }
     .hud-theme-floral .hud-stat-bar-container { background: #e0e0e0; border: 1px solid #c8e6c9; }
     .hud-theme-floral .hud-stat-bar-fill { background: linear-gradient(90deg, #66bb6a, #43a047); }
-    .hud-theme-floral .hud-refresh-btn { color: #558b2f; }
-    .hud-theme-floral .hud-refresh-btn:hover { color: #33691e; background: rgba(85, 139, 47, 0.1); }
 
-    /* --- Theme 3: Candy (Pop/Vibrant) --- */
+    /* --- Theme 3: Candy (Pop/Vibrant) - Full --- */
     .hud-theme-candy {
         --bg: #fff0f5;
         --c-val: #4a0072;
@@ -265,49 +218,38 @@
     }
     .hud-theme-candy .hud-stat-bar-container { background: #ffc1e3; border: 1px solid #ff80ab; }
     .hud-theme-candy .hud-stat-bar-fill { background: linear-gradient(90deg, #ff4081, #f50057); }
-    .hud-theme-candy .hud-refresh-btn { color: #c51162; }
-    .hud-theme-candy .hud-refresh-btn:hover { color: #880e4f; background: rgba(197, 17, 98, 0.1); }
 
-    /* --- Character Stat Bar Styles (增强版) --- */
+    /* --- Character Stat Bar Styles (新增) --- */
     .hud-stat-bar-wrapper {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 8px 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
         margin-top: 10px;
         padding-top: 10px;
         border-top: 1px solid rgba(128,128,128,0.2);
     }
     .hud-stat-bar {
         display: flex;
-        flex-direction: column;
-        gap: 4px;
+        align-items: center;
+        gap: 8px;
         font-size: 0.9em;
     }
     .hud-stat-bar-label {
+        flex: 0 0 65px;
         font-weight: 600;
         opacity: 0.9;
-        font-size: 0.85em;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-    }
-    .hud-stat-bar-label-text {
-        flex: 1;
-    }
-    .hud-stat-bar-label-value {
-        font-size: 0.9em;
-        opacity: 0.7;
+        font-size: 0.95em;
     }
     .hud-stat-bar-container {
-        width: 100%;
-        height: 18px;
-        border-radius: 9px;
+        flex: 1;
+        height: 20px;
+        border-radius: 10px;
         overflow: hidden;
         position: relative;
     }
     .hud-stat-bar-fill {
         height: 100%;
-        border-radius: 9px;
+        border-radius: 10px;
         transition: width 0.4s ease;
         position: relative;
     }
@@ -320,39 +262,14 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        font-size: 0.75em;
+        font-size: 0.8em;
         font-weight: 700;
-        color: rgba(0,0,0,0.6);
+        color: rgba(0,0,0,0.7);
         text-shadow: 0 0 3px rgba(255,255,255,0.9);
     }
 
-    /* --- Refresh Button Styles --- */
-    .hud-refresh-btn {
-        position: absolute;
-        top: 8px;
-        right: 12px;
-        width: 28px;
-        height: 28px;
-        border-radius: 50%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        cursor: pointer;
-        opacity: 0.4;
-        transition: all 0.3s ease;
-        z-index: 10;
-        font-size: 0.9em;
-    }
-    .hud-refresh-btn:hover {
-        opacity: 1;
-        transform: rotate(180deg);
-    }
-    .hud-refresh-btn i {
-        pointer-events: none;
-    }
-
     /* --- General Layout --- */
-    .hud-head { padding: 10px 16px; display: flex; flex-wrap: wrap; gap: 15px; font-size: 0.9em; align-items: center; position: relative; }
+    .hud-head { padding: 10px 16px; display: flex; flex-wrap: wrap; gap: 15px; font-size: 0.9em; align-items: center; }
     .hud-stat-item { display: flex; align-items: center; gap: 8px; font-weight: 500; }
     
     .hud-users-toggle { 
@@ -404,83 +321,74 @@
     }, 500);
 
     function initScript() {
-        log('[初始化] 开始加载脚本...');
         loadSettings();
         injectStyles();
         addMenu();
         initGlobalListeners();
         registerSTEvents();
+        initMVUListener();
         
         setTimeout(() => {
+            loadCharacterStats();
             processChatDOM('Init');
-            log('[初始化] ✅ 脚本加载完成！');
-            // 显示加载成功提示
-            if (typeof SillyTavern.toastr !== 'undefined') {
-                toastr.success('美化终端 v30.0 已加载', '状态栏脚本');
-            }
         }, 1000);
     }
 
     function injectStyles() {
-        if (!$('#tri-hud-style').length) {
-            $('head').append(`<style id="tri-hud-style">${STYLES}</style>`);
-            log('[样式] CSS注入成功');
-        }
+        if (!$('#tri-hud-style').length) $('head').append(`<style id="tri-hud-style">${STYLES}</style>`);
+    }
+
+    // --- MVU Event Listener (新增) ---
+    function initMVUListener() {
+        const checkMVU = setInterval(() => {
+            if (typeof Mvu !== 'undefined' && Mvu.events && typeof eventOn !== 'undefined') {
+                clearInterval(checkMVU);
+                try {
+                    eventOn(Mvu.events.VARIABLE_UPDATE_ENDED, () => {
+                        log('MVU variables updated, reloading character stats...');
+                        loadCharacterStats();
+                        // 重新渲染所有HUD
+                        $('.mes_text small[data-hud-processed]').removeAttr('data-hud-processed').removeClass('hud-hide');
+                        $('.hud-root').remove();
+                        processChatDOM('MVU-Update');
+                    });
+                    log('MVU listener registered successfully');
+                } catch(e) {
+                    console.error('[HUD] Failed to register MVU listener:', e);
+                }
+            }
+        }, 500);
+        // 超时保护
+        setTimeout(() => clearInterval(checkMVU), 10000);
     }
 
     // --- Event Delegation ---
     function initGlobalListeners() {
-        log('[事件] 初始化全局监听器');
         const $chat = $('#chat');
-        
-        // 人物列表折叠
         $chat.on('click', '.hud-users-toggle', function(e) {
             e.stopPropagation(); e.preventDefault();
             const $bar = $(this);
             const $scroll = $bar.next('.hud-users-scroll');
             $scroll.toggleClass('collapsed');
             $bar.find('.fa-chevron-down').toggleClass('rotate-icon');
-            log('[事件] 人物列表折叠切换');
         });
 
-        // 选项点击
         $chat.on('click', '.hud-btn', function(e) {
             e.stopPropagation(); e.preventDefault();
             const fullText = decodeURIComponent($(this).attr('data-full-text'));
             $('#send_textarea').val(fullText).trigger('input').focus();
             if (settings.autoSend) setTimeout(() => $('#send_but').trigger('click'), 100);
-            log('[事件] 选项点击:', fullText);
-        });
-        
-        // 刷新按钮
-        $chat.on('click', '.hud-refresh-btn', function(e) {
-            e.stopPropagation(); e.preventDefault();
-            log('[刷新] 手动刷新触发');
-            const $hud = $(this).closest('.hud-root');
-            const $small = $hud.prev('.hud-hide');
-            
-            if ($small.length) {
-                // 重新处理这个small元素
-                $small.removeAttr('data-hud-processed').removeClass('hud-hide');
-                $hud.remove();
-                processChatDOM('Manual-Refresh');
-                log('[刷新] 重新渲染完成');
-            }
         });
     }
 
     // --- DOM Processing ---
     let renderLock = false;
     function processChatDOM(src) {
-        if (renderLock) {
-            log(`[渲染] 渲染锁定中，跳过 (${src})`);
-            return;
-        }
+        if (renderLock) return;
         renderLock = true;
         setTimeout(() => renderLock = false, 200);
 
-        log(`[渲染] 开始处理DOM (来源: ${src})`);
-        let processedCount = 0;
+        log(`Processing DOM (${src})...`);
 
         $('.mes_text small').each(function() {
             const $el = $(this);
@@ -488,7 +396,6 @@
             const text = $el.text();
             if (!text.includes('状态栏') && !text.includes('人物列表') && !text.includes('行动选项')) return;
 
-            log('[渲染] 发现待处理的状态栏元素');
             $el.attr('data-hud-processed', 'true');
             $el.addClass('hud-hide');
 
@@ -502,41 +409,16 @@
                 const $hud = renderHUD(data);
                 applySettingsToElement($hud);
                 $el.after($hud);
-                processedCount++;
-                log('[渲染] HUD渲染成功', data);
-            } else {
-                log('[渲染] 解析数据失败');
             }
         });
-        
-        log(`[渲染] 完成，处理了 ${processedCount} 个状态栏`);
     }
 
-    // --- Advanced Parser (Multi-line Support + JSON Extraction) ---
+    // --- Advanced Parser (Multi-line Support) ---
     function parseContent(domEl) {
         if (!domEl) return null;
-        log('[解析] 开始解析内容');
-        
         let html = domEl.innerHTML.replace(/<br\s*\/?>/gi, '\n').replace(/<\/p>/gi, '\n').replace(/<\/div>/gi, '\n');
         const temp = document.createElement('div'); temp.innerHTML = html;
-        const fullText = temp.innerText || temp.textContent;
-        
-        // 首先尝试提取JSON数据
-        const jsonData = extractJSONFromText(fullText);
-        if (jsonData) {
-            characterStats = parseCharacterStatsFromJSON(jsonData);
-            log('[解析] JSON数据提取并存储成功');
-        } else {
-            log('[解析] 未找到JSON数据或解析失败');
-        }
-        
-        // 移除JSON部分，继续解析剩余内容
-        let textWithoutJSON = fullText;
-        if (jsonData) {
-            textWithoutJSON = fullText.replace(/\{[\s\S]*?\}/, '').trim();
-        }
-        
-        const lines = textWithoutJSON.split('\n').map(l => l.trim()).filter(l => l);
+        const lines = (temp.innerText || temp.textContent).split('\n').map(l => l.trim()).filter(l => l);
 
         let res = { status: [], users: [], options: [], tips: '' };
         let mode = 'none';
@@ -546,10 +428,10 @@
         let lastUserKey = null;
 
         for (let line of lines) {
-            if (line.includes('状态栏')) { mode = 'status'; lastActiveItem = null; log('[解析] 进入状态栏模式'); continue; }
-            if (line.includes('人物列表')) { mode = 'users'; lastActiveItem = null; log('[解析] 进入人物列表模式'); continue; }
-            if (line.includes('行动选项')) { mode = 'options'; lastActiveItem = null; log('[解析] 进入行动选项模式'); continue; }
-            if (line.match(/^Tips[:：]/i)) { res.tips = line.replace(/^Tips[:：]\s*/i, ''); log('[解析] 提取Tips'); continue; }
+            if (line.includes('状态栏')) { mode = 'status'; lastActiveItem = null; continue; }
+            if (line.includes('人物列表')) { mode = 'users'; lastActiveItem = null; continue; }
+            if (line.includes('行动选项')) { mode = 'options'; lastActiveItem = null; continue; }
+            if (line.match(/^Tips[:：]/i)) { res.tips = line.replace(/^Tips[:：]\s*/i, ''); continue; }
 
             if (mode === 'status') {
                 let parts = splitFirst(line, /[:：]/);
@@ -566,8 +448,7 @@
                 if (line.match(/^(名字|Name)[:：]/i)) {
                     if (currentUser) res.users.push(currentUser);
                     currentUser = {};
-                    lastActiveItem = null;
-                    log('[解析] 新用户开始');
+                    lastActiveItem = null; 
                 }
 
                 if (currentUser) {
@@ -588,17 +469,7 @@
             }
         }
         if (currentUser) res.users.push(currentUser);
-        
-        log('[解析] 解析完成', {
-            statusCount: res.status.length,
-            usersCount: res.users.length,
-            optionsCount: res.options.length
-        });
-        
-        if (!res.status.length && !res.users.length && !res.options.length) {
-            log('[解析] 无有效内容');
-            return null;
-        }
+        if (!res.status.length && !res.users.length && !res.options.length) return null;
         return res;
     }
 
@@ -608,67 +479,25 @@
         return [str.substring(0, match.index).trim(), str.substring(match.index + match[0].length).trim()];
     }
 
-    // --- 生成数值条HTML (增强版) ---
-    function renderStatBars(characterName) {
-        log(`[渲染数值条] 开始为 ${characterName} 渲染数值条`);
-        
-        if (!characterStats[characterName]) {
-            log(`[渲染数值条] ${characterName} 无数据`);
-            return '';
-        }
-        
-        const stats = characterStats[characterName];
-        const statKeys = Object.keys(stats);
-        
-        if (statKeys.length === 0) {
-            log(`[渲染数值条] ${characterName} 属性为空`);
-            return '';
-        }
-        
-        let html = `<div class="hud-stat-bar-wrapper">`;
-        
-        statKeys.forEach(key => {
-            const stat = stats[key];
-            const safeValue = Math.max(0, Math.min(stat.max, stat.value || 0));
-            const percentage = (safeValue / stat.max) * 100;
-            
-            // 简化标签显示
-            let displayLabel = key;
-            if (stat.description) {
-                // 尝试从描述中提取简短标签
-                const labelMatch = stat.description.match(/^(.+?)值/);
-                if (labelMatch) {
-                    displayLabel = labelMatch[1];
-                }
-            }
-            
-            html += `
-                <div class="hud-stat-bar">
-                    <div class="hud-stat-bar-label">
-                        <span class="hud-stat-bar-label-text" title="${stat.description}">${displayLabel}</span>
-                        <span class="hud-stat-bar-label-value">${safeValue}/${stat.max}</span>
-                    </div>
-                    <div class="hud-stat-bar-container">
-                        <div class="hud-stat-bar-fill" style="width: ${percentage}%">
-                            <div class="hud-stat-bar-text">${percentage.toFixed(0)}%</div>
-                        </div>
+    // --- 生成数值条HTML (新增) ---
+    function renderStatBar(label, value, max = 100) {
+        const safeValue = Math.max(0, Math.min(max, value || 0));
+        const percentage = (safeValue / max) * 100;
+        return `
+            <div class="hud-stat-bar">
+                <div class="hud-stat-bar-label">${label}</div>
+                <div class="hud-stat-bar-container">
+                    <div class="hud-stat-bar-fill" style="width: ${percentage}%">
+                        <div class="hud-stat-bar-text">${safeValue}/${max}</div>
                     </div>
                 </div>
-            `;
-        });
-        
-        html += `</div>`;
-        log(`[渲染数值条] ${characterName} 渲染完成，共 ${statKeys.length} 个属性`);
-        return html;
+            </div>
+        `;
     }
 
     // --- Rendering ---
     function renderHUD(data) {
-        log('[渲染HUD] 开始生成HTML');
         let html = `<div class="hud-root">`;
-        
-        // 刷新按钮（固定在右上角）
-        html += `<div class="hud-refresh-btn" title="刷新数据"><i class="fa-solid fa-rotate-right"></i></div>`;
 
         // 1. Status Bar
         if (data.status.length) {
@@ -680,18 +509,17 @@
                 html += `<div class="hud-stat-item"><i class="fa-solid ${icon} hud-stat-icon"></i> <span>${s.v}</span></div>`;
             });
             html += `</div>`;
-            log('[渲染HUD] 状态栏渲染完成');
         }
 
-        // 2. Users (修改：动态添加角色统计条)
+        // 2. Users (修改：添加角色统计条)
         if (data.users.length) {
             html += `<div class="hud-users-toggle"><span><i class="fa-solid fa-users"></i> 人物列表 (${data.users.length})</span><i class="fa-solid fa-chevron-down"></i></div>`;
             html += `<div class="hud-users-scroll collapsed">`;
             data.users.forEach(u => {
-                let name = u['名字'] || u['Name'] || 'Unknown';
+                let name = u['名字'] || 'Unknown';
                 let props = '';
                 for (let k in u) {
-                    if (k === '名字' || k === 'Name') continue;
+                    if (k === '名字') continue;
                     let icon = 'fa-caret-right';
                     if (k.includes('内心')) icon = 'fa-brain';
                     if (k.includes('状态')) icon = 'fa-heart-pulse';
@@ -700,13 +528,19 @@
                     props += `<div class="hud-kv"><div class="hud-tag-key"><i class="fa-solid ${icon}"></i> ${k}</div><div class="hud-tag-val">${u[k]}</div></div>`;
                 }
                 
-                // 动态添加数值条
-                let statBars = renderStatBars(name);
+                // 新增：为W和红莲添加数值条
+                let statBars = '';
+                if (characterStats[name]) {
+                    const stats = characterStats[name];
+                    statBars = `<div class="hud-stat-bar-wrapper">`;
+                    statBars += renderStatBar('S倾向', stats.S, 100);
+                    statBars += renderStatBar('M倾向', stats.M, 100);
+                    statBars += `</div>`;
+                }
                 
                 html += `<div class="hud-user-card"><div class="hud-user-name">${name}</div>${props}${statBars}</div>`;
             });
             html += `</div>`;
-            log('[渲染HUD] 人物列表渲染完成');
         }
 
         // 3. Options
@@ -718,16 +552,13 @@
                 html += `<div class="hud-btn" data-full-text="${safeFull}"><div class="hud-idx">${o.idx}</div><div class="hud-btn-content">${titleHtml}<div class="hud-btn-text">${o.text}</div></div></div>`;
             });
             html += `</div></div>`;
-            log('[渲染HUD] 选项列表渲染完成');
         }
 
         if (data.tips) {
             html += `<div class="hud-tips"><i class="fa-solid fa-lightbulb"></i> ${data.tips}</div>`;
-            log('[渲染HUD] Tips渲染完成');
         }
 
         html += `</div>`;
-        log('[渲染HUD] HTML生成完成');
         return $(html);
     }
 
@@ -737,29 +568,23 @@
         $el.addClass(`hud-theme-${settings.theme}`);
         $el.css('--hud-scale', settings.scale);
         $el.css('font-family', settings.fontFamily || '');
-        log('[样式] 应用主题:', settings.theme);
     }
 
     function addMenu() {
         const extensionsMenu = $('#extensionsMenu');
         const menuItemId = `${SCRIPT_ID}-menu`;
-        if (extensionsMenu.length === 0) { 
-            setTimeout(addMenu, 1000); 
-            return; 
-        }
+        if (extensionsMenu.length === 0) { setTimeout(addMenu, 1000); return; }
         if ($(`#${menuItemId}`).length > 0) return;
 
         const btn = $(`<div class="list-group-item flex-container flexGap5 interactable" id="${menuItemId}"><div class="fa-fw fa-solid fa-palette"></div><span>美化终端设置</span></div>`);
         btn.on('click', () => {
-            log('[菜单] 打开设置面板');
             const html = `
             <div style="padding:15px; display:flex; flex-direction:column; gap:15px;">
-                <h3>终端样式设置 (Std API v30)</h3>
+                <h3>终端样式设置 (Std API v29)</h3>
                 <div><label>主题风格:</label><select id="hud-theme-select" class="text_pole" style="width:100%;margin-top:5px;"><option value="luxury" ${settings.theme==='luxury'?'selected':''}>商务奢华 (Dark Gold)</option><option value="floral" ${settings.theme==='floral'?'selected':''}>清新花艺 (Nature)</option><option value="candy" ${settings.theme==='candy'?'selected':''}>糖果波普 (Vibrant)</option></select></div>
                 <div><label>字体缩放 (${settings.scale}):</label><input type="range" id="hud-scale-range" min="0.8" max="1.3" step="0.05" value="${settings.scale}" style="width:100%"></div>
                 <div><label>自定义字体:</label><input type="text" id="hud-font-input" class="text_pole" placeholder="留空默认" value="${settings.fontFamily}" style="width:100%"></div>
                 <label class="checkbox_label"><input type="checkbox" id="hud-auto-send" ${settings.autoSend?'checked':''}> 点击选项自动发送</label>
-                <label class="checkbox_label"><input type="checkbox" id="hud-debug" ${settings.debug?'checked':''}> 开启Debug日志</label>
                 <button id="hud-force-refresh" class="menu_button">🔄 强制重绘 (Fix Layout)</button>
             </div>`;
             SillyTavern.callGenericPopup(html, 1, '', {wide:false});
@@ -768,23 +593,19 @@
                 $('#hud-scale-range').on('input', function() { settings.scale = parseFloat(this.value); $(this).prev().text(`字体缩放 (${settings.scale}):`); saveSettings(); });
                 $('#hud-font-input').on('change', function() { settings.fontFamily = this.value; saveSettings(); });
                 $('#hud-auto-send').on('change', function() { settings.autoSend = this.checked; saveSettings(); });
-                $('#hud-debug').on('change', function() { settings.debug = this.checked; saveSettings(); });
-                $('#hud-force-refresh').on('click', function() {
-                    log('[菜单] 强制刷新触发');
+                $('#hud-force-refresh').on('click', function() { 
+                    loadCharacterStats();
                     $('.mes_text small').removeAttr('data-hud-processed').removeClass('hud-hide');
                     $('.hud-root').remove();
-                    characterStats = {};
-                    processChatDOM('Manual-Force');
+                    processChatDOM('Manual');
                 });
             }, 100);
         });
         extensionsMenu.append(btn);
-        log('[菜单] 添加成功');
     }
 
     // --- Standard Event Hooks ---
     function registerSTEvents() {
-        log('[事件] 注册SillyTavern事件钩子');
         if (!SillyTavern.eventSource) return;
         const updateEvents = [
             SillyTavern.eventTypes?.MESSAGE_UPDATED || 'message_updated',
@@ -795,7 +616,7 @@
         ];
         updateEvents.forEach(evt => {
             if (evt) SillyTavern.eventSource.on(evt, () => setTimeout(() => {
-                log(`[事件] ${evt} 触发`);
+                loadCharacterStats();
                 processChatDOM(evt);
             }, 200));
         });
@@ -804,11 +625,11 @@
         if (chatContainer) {
             const obs = new MutationObserver((mutations) => {
                 if (mutations.some(m => m.addedNodes.length)) {
+                    loadCharacterStats();
                     processChatDOM('Mutation');
                 }
             });
             obs.observe(chatContainer, { childList: true, subtree: true });
-            log('[事件] MutationObserver注册成功');
         }
     }
 })();
