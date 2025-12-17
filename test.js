@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         三风格极致UI终端 (Std API) - Enhanced & Multiline & Dynamic Character Stats
-// @version      32.0
-// @description  Full UI + Premium M/S Bars + Three Refined Themes (Luxury/Floral/Sensual)
+// @version      32.1
+// @description  Full UI + Premium M/S Bars + Three Refined Themes (Luxury/Floral/Sensual) - [smallbar] Support
 // @author       Custom & Gemini & Assistant
 // @match        */*
 // ==/UserScript==
@@ -41,7 +41,7 @@
 
     function log(msg, type = 'info') {
         if (!settings.debug) return;
-        const prefix = '[HUD-v32]';
+        const prefix = '[HUD-v32.1]';
         const styles = {
             'info': 'color: #2196F3',
             'success': 'color: #4CAF50; font-weight: bold',
@@ -541,7 +541,7 @@
         box-shadow: 0 4px 20px rgba(117, 8, 81, 0.3), inset 0 0 20px rgba(244, 164, 183, 0.05);
         transform: translateX(4px);
     }
-    .hud-theme-sensual .hud-idx { 
+    .hud-theme-sensual .hud-idx {
         background: linear-gradient(135deg, rgba(122, 42, 51, 0.8), rgba(117, 8, 81, 0.9));
         border: 2px solid rgba(212, 165, 116, 0.5);
         box-shadow: 
@@ -909,7 +909,7 @@
 
     function initScript() {
         log('═══════════════════════════════════════', 'info');
-        log('🚀 Initializing HUD Script v32.0...', 'info');
+        log('🚀 Initializing HUD Script v32.1...', 'info');
         log('═══════════════════════════════════════', 'info');
         
         loadSettings();
@@ -934,11 +934,11 @@
             processChatDOM('Init');
             log('✓ Initial processing complete', 'success');
             log('═══════════════════════════════════════', 'success');
-            log('🎉 HUD Script v32.0 LOADED SUCCESSFULLY!', 'success');
+            log('🎉 HUD Script v32.1 LOADED SUCCESSFULLY!', 'success');
             log('═══════════════════════════════════════', 'success');
             
             if (typeof toastr !== 'undefined') {
-                toastr.success('美化终端 v32.0 加载成功！', '终端系统', {timeOut: 3000});
+                toastr.success('美化终端 v32.1 加载成功 - [smallbar]标记支持！', '终端系统', {timeOut: 3000});
             }
         }, 1000);
     }
@@ -986,27 +986,32 @@
             log('═══════════════════════════════════════', 'info');
             
             const $root = $(this).closest('.hud-root');
-            const $small = $root.prev('.hud-hide');
+            const hudId = $root.attr('data-hud-id');
             
-            if ($small.length) {
-                log('→ Found hidden content, re-processing...', 'info');
-                $small.removeAttr('data-hud-processed').removeClass('hud-hide');
-                $root.remove();
-                setTimeout(() => {
-                    processChatDOM('Refresh');
-                    log('✓ Refresh complete!', 'success');
-                    if (typeof toastr !== 'undefined') {
-                        toastr.info('状态栏已刷新', '终端系统', {timeOut: 2000});
-                    }
-                }, 100);
-            } else {
-                log('✗ No hidden content found for refresh', 'error');
+            if (hudId) {
+                const $hidden = $(`.hud-hidden-source[data-hud-id="${hudId}"]`);
+                if ($hidden.length) {
+                    log('→ Found hidden source, re-processing...', 'info');
+                    $hidden.removeAttr('data-hud-processed');
+                    $root.remove();
+                    setTimeout(() => {
+                        processChatDOM('Refresh');
+                        log('✓ Refresh complete!', 'success');
+                        if (typeof toastr !== 'undefined') {
+                            toastr.info('状态栏已刷新', '终端系统', {timeOut: 2000});
+                        }
+                    }, 100);
+                } else {
+                    log('✗ No hidden source found for refresh', 'error');
+                }
             }
         });
     }
 
-    // --- DOM Processing ---
+    // --- DOM Processing (Modified for [smallbar] tags) ---
     let renderLock = false;
+    let hudIdCounter = 0;
+    
     function processChatDOM(src) {
         if (renderLock) {
             log(`⚠ Render locked, skipping (${src})`, 'warning');
@@ -1018,29 +1023,71 @@
         log(`→ Processing DOM from source: ${src}`, 'info');
         let processedCount = 0;
 
-        $('.mes_text small').each(function() {
-            const $el = $(this);
-            if ($el.attr('data-hud-processed')) return;
-            const text = $el.text();
-            if (!text.includes('状态栏') && !text.includes('人物列表') && !text.includes('行动选项')) return;
-
-            log(`→ Found unprocessed <small> element`, 'info');
-            $el.attr('data-hud-processed', 'true');
-            $el.addClass('hud-hide');
-
-            const data = parseContent(this);
-            if (data) {
-                let next = $el.next();
-                while (next.length && next.hasClass('hud-root')) {
-                    next.remove();
-                    next = $el.next();
-                }
-                const $hud = renderHUD(data);
-                applySettingsToElement($hud);
-                $el.after($hud);
-                processedCount++;
-                log(`✓ HUD rendered successfully (#${processedCount})`, 'success');
+        // 遍历所有消息文本容器
+        $('.mes_text').each(function() {
+            const $container = $(this);
+            let html = $container.html();
+            
+            // 正则匹配所有 [smallbar]...[/smallbar] 标记
+            const regex = /\[smallbar\]([\s\S]*?)\[\/smallbar\]/gi;
+            let matches = [];
+            let match;
+            
+            // 收集所有匹配
+            while ((match = regex.exec(html)) !== null) {
+                matches.push({
+                    fullMatch: match[0],
+                    innerContent: match[1],
+                    index: match.index
+                });
             }
+            
+            if (matches.length === 0) return;
+            
+            // 倒序处理（从后往前），避免索引错位
+            matches.reverse().forEach(matchData => {
+                const uniqueId = `hud-${hudIdCounter++}`;
+                
+                // 检查是否已处理
+                if ($container.find(`.hud-hidden-source[data-hud-id="${uniqueId}"]`).length > 0) {
+                    return;
+                }
+                
+                // 检查此位置是否已有隐藏标记
+                const checkHtml = $container.html();
+                if (checkHtml.includes(`data-hud-source-index="${matchData.index}"`)) {
+                    return;
+                }
+                
+                log(`→ Found [smallbar] block at index ${matchData.index}`, 'info');
+                
+                // 创建临时容器解析内容
+                const tempDiv = document.createElement('div');
+                tempDiv.innerHTML = matchData.innerContent;
+                
+                const data = parseContent(tempDiv);
+                
+                if (data) {
+                    const $hud = renderHUD(data, uniqueId);
+                    applySettingsToElement($hud);
+                    
+                    // 创建隐藏的源内容标记
+                    const hiddenSource = `<span class="hud-hidden-source hud-hide" data-hud-id="${uniqueId}" data-hud-processed="true" data-hud-source-index="${matchData.index}">${matchData.fullMatch}</span>`;
+                    
+                    // 替换原始标记
+                    let currentHtml = $container.html();
+                    const beforeMatch = currentHtml.substring(0, matchData.index);
+                    const afterMatch = currentHtml.substring(matchData.index + matchData.fullMatch.length);
+                    
+                    $container.html(beforeMatch + hiddenSource + afterMatch);
+                    
+                    // 插入HUD
+                    $container.find(`.hud-hidden-source[data-hud-id="${uniqueId}"]`).after($hud);
+                    
+                    processedCount++;
+                    log(`✓ HUD rendered successfully (#${processedCount}) with ID: ${uniqueId}`, 'success');
+                }
+            });
         });
 
         if (processedCount > 0) {
@@ -1221,9 +1268,9 @@
     }
 
     // --- Rendering ---
-    function renderHUD(data) {
+    function renderHUD(data, hudId) {
         log('→ Rendering HUD HTML...', 'info');
-        let html = `<div class="hud-root">`;
+        let html = `<div class="hud-root" data-hud-id="${hudId}">`;
         
         html += `<div class="hud-refresh-btn" title="刷新状态栏"><i class="fa-solid fa-rotate-right"></i></div>`;
 
@@ -1322,27 +1369,26 @@
         }
         if ($(`#${menuItemId}`).length > 0) return;
 
-        const btn = $(`<div class="list-group-item flex-container flexGap5 interactable" id="${menuItemId}"><div class="fa-fw fa-solid fa-palette"></div><span>美化终端设置 v32.0</span></div>`);
+        const btn = $(`<div class="list-group-item flex-container flexGap5 interactable" id="${menuItemId}"><div class="fa-fw fa-solid fa-palette"></div><span>美化终端设置 v32.1</span></div>`);
         btn.on('click', () => {
             const html = `
             <div style="padding:15px; display:flex; flex-direction:column; gap:15px;">
-                <h3>终端样式设置 (v32.0) - 三风格奢华版</h3>
+                <h3>终端样式设置 (v32.1) - [smallbar]标记支持</h3>
                 <div><label>主题风格:</label><select id="hud-theme-select" class="text_pole" style="width:100%;margin-top:5px;"><option value="luxury" ${settings.theme==='luxury'?'selected':''}>商务奢华 (Dark Gold)</option><option value="floral" ${settings.theme==='floral'?'selected':''}>清新花艺 (Nature)</option><option value="sensual" ${settings.theme==='sensual'?'selected':''}>暗夜情欲 (Dark Romance)</option></select></div>
                 <div><label>字体缩放 (${settings.scale}):</label><input type="range" id="hud-scale-range" min="0.8" max="1.3" step="0.05" value="${settings.scale}" style="width:100%"></div>
                 <div><label>自定义字体:</label><input type="text" id="hud-font-input" class="text_pole" placeholder="留空默认" value="${settings.fontFamily}" style="width:100%"></div>
                 <label class="checkbox_label"><input type="checkbox" id="hud-auto-send" ${settings.autoSend?'checked':''}> 点击选项自动发送</label>
                 <label class="checkbox_label"><input type="checkbox" id="hud-debug" ${settings.debug?'checked':''}> 启用调试信息 (Console)</label>
-                <button id="hud-force-refresh" class="menu_button">🔄 重绘</button>
+                <button id="hud-force-refresh" class="menu_button">🔄 强制重绘所有状态栏</button>
                 <div style="padding:12px; background:linear-gradient(135deg, #1a0a0e, #2d1419); border-radius:8px; font-size:0.9em; border-left:4px solid #d4a574; color:#f4d2d9;">
-                    <strong>🌹 v32.0 奢华三主题:</strong><br>
-                    • <strong>修正M/S识别</strong>：根据键名智能判断<br>
+                    <strong>🌹 v32.1 更新:</strong><br>
+                    • <strong>[smallbar]标记支持</strong>：替代&lt;small&gt;标签<br>
+                    • <strong>使用方法</strong>：用[smallbar]...[/smallbar]包裹内容<br>
+                    • <strong>M/S识别</strong>：根据键名智能判断<br>
                     • <strong>数值条升级</strong>：32px高度+超强发光脉冲<br>
-                    • <strong>属性间距</strong>：10px精确间距<br>
-                    • <strong>Luxury</strong>：深邃金融仪表盘+玻璃态<br>
-                    • <strong>Floral</strong>：清新iOS风格+花卉装饰<br>
-                    • <strong>Sensual</strong>：酒红紫罗兰+天鹅绒质感<br>
-                    • <strong>交互动画</strong>：流畅缓动+多层阴影<br>
-                    • 移动端完美触控适配
+                    • <strong>三大主题</strong>：Luxury/Floral/Sensual<br>
+                    • <strong>完美交互</strong>：流畅动画+多层阴影<br>
+                    • 移动端触控优化
                 </div>
             </div>`;
             SillyTavern.callGenericPopup(html, 1, '', {wide:false});
@@ -1362,7 +1408,8 @@
                     log('═══════════════════════════════════════', 'warning');
                     
                     characterStats = {};
-                    $('.mes_text small').removeAttr('data-hud-processed').removeClass('hud-hide');
+                    hudIdCounter = 0;
+                    $('.hud-hidden-source').removeAttr('data-hud-processed');
                     $('.hud-root').remove();
                     processChatDOM('Manual-Force-Refresh');
                     
