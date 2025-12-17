@@ -1,6 +1,6 @@
 // ==UserScript==
-// @name         生图助手 (Fix v32 - Direct Call)
-// @version      32
+// @name         生图助手 (Fix v33 - Direct Call)
+// @version      33
 // @description  移除模拟点击，改为直接调用handleGeneration()函数，提升稳定性
 // @author       Walkeatround & Gemini & AI Assistant
 // @match        */*
@@ -9,10 +9,10 @@
 
 (function () {
     'use strict';
-    console.log('[SD Helper v32] Script loaded (Direct Function Call).');
+    console.log('[SD Helper v33] Script loaded (Direct Function Call).');
 
-    const SCRIPT_ID = 'sd_gen_standard_v32';
-    const STORAGE_KEY = 'sd_gen_settings_v32';
+    const SCRIPT_ID = 'sd_gen_standard_v33';
+    const STORAGE_KEY = 'sd_gen_settings_v33';
     const NO_GEN_FLAG = '<!--no-gen-->';
     
     const RUNTIME_LOGS = [];
@@ -228,8 +228,8 @@
     }, 500);
 
     function injectGlobalStyles() {
-        if ($('#sd-global-css-v32').length) return;
-        $('<style id="sd-global-css-v32">').text(GLOBAL_CSS).appendTo('head');
+        if ($('#sd-global-css-v33').length) return;
+        $('<style id="sd-global-css-v33">').text(GLOBAL_CSS).appendTo('head');
         console.log('[SD] Global CSS injected.');
     }
 
@@ -397,11 +397,17 @@
                 newUrls.forEach(u => state.images.push(u));
                 const uniqueImages = [...new Set(state.images)];
                 addLog('GEN_SAVE', `Block ${state.blockIdx}: 图片数组更新 - 去重后共 ${uniqueImages.length} 张`);
-                
-                await updateChatData(state.mesId, state.blockIdx, state.prompt, uniqueImages, false);
+                    // ✅ 方案一：先更新UI（立即显示）
+                addLog('GEN_UI_FIRST', `Block ${state.blockIdx}: 优先更新UI显示图片`);
                 updateWrapperView(state.$wrap, uniqueImages, uniqueImages.length - 1);
+                await updateChatData(state.mesId, state.blockIdx, state.prompt, uniqueImages, false);
+                // 保存后再次确认UI（防止被ST重渲染覆盖）
+                setTimeout(() => {
+                addLog('GEN_UI_CONFIRM', `Block ${state.blockIdx}: 二次确认UI状态`);
+                updateWrapperView(state.$wrap, uniqueImages, uniqueImages.length - 1);
+                }, 100);                
                 addLog('GEN_COMPLETE', `Block ${state.blockIdx}: 生图流程完成，UI已更新`);
-            } else {
+                } else {
                 addLog('WARN', `Block ${state.blockIdx}: API响应中未找到图片URL`);
                 showMsg('⚠️ 无结果');
             }
@@ -535,6 +541,27 @@
 
         $('.mes_text').each(function() {
             const $el = $(this);
+
+                    // ✅ 方案三：先检测并修复已有的不一致UI
+        $el.find('.sd-ui-wrap').each(function() {
+            const $w = $(this);
+            const imgs = JSON.parse(decodeURIComponent($w.attr('data-images')));
+            const $placeholder = $w.find('.sd-placeholder');
+            const $img = $w.find('.sd-ui-image');
+            
+            // 如果有图片但还显示占位符 = 状态不一致
+            if (imgs.length > 0 && $placeholder.is(':visible')) {
+                const blockIdx = $w.attr('data-block-idx');
+                addLog('FIX_UI', `Block ${blockIdx}: 检测到UI不一致(有图但显示占位符)，自动修复`);
+                updateWrapperView($w, imgs, imgs.length - 1);
+            }
+            // 或者有图片但img元素没有src
+            else if (imgs.length > 0 && !$img.attr('src')) {
+                const blockIdx = $w.attr('data-block-idx');
+                addLog('FIX_UI', `Block ${blockIdx}: 检测到UI不一致(有图但img无src)，自动修复`);
+                updateWrapperView($w, imgs, imgs.length - 1);
+            }
+        });
             
             let blockIdx = 0;
             
@@ -847,7 +874,7 @@
 
         const popupHtml = `
             <div style="padding: 10px; max-height: 70vh; overflow-y: auto; overflow-x: hidden; scrollbar-width: thin;">
-                <h3 style="margin-bottom: 15px;">🎨 SD生图助手 v32</h3>
+                <h3 style="margin-bottom: 15px;">🎨 SD生图助手 v33</h3>
                 <div class="sd-tab-nav">
                     <div id="${tabInjId}" class="sd-tab-btn active">注入(Prompt)</div>
                     <div id="${tabCfgId}" class="sd-tab-btn">基础设置</div>
