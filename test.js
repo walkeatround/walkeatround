@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         三风格极致UI终端 (Std API) - Enhanced & Multiline & Dynamic Character Stats
-// @version      30.1
-// @description  Full UI + Dynamic Stats Bars (First Position) + Color Coded + Mobile Friendly Refresh
+// @version      32.0
+// @description  Full UI + Premium M/S Bars + Three Refined Themes (Luxury/Floral/Sensual)
 // @author       Custom & Gemini & Assistant
 // @match        */*
 // ==/UserScript==
@@ -9,8 +9,8 @@
 (function () {
     'use strict';
 
-    const SCRIPT_ID = 'tri_hud_std_v30_dynamic';
-    const SETTINGS_KEY = 'tri_hud_settings_v30';
+    const SCRIPT_ID = 'tri_hud_std_v32_premium';
+    const SETTINGS_KEY = 'tri_hud_settings_v32';
     
     let settings = {
         autoSend: false,
@@ -41,7 +41,7 @@
 
     function log(msg, type = 'info') {
         if (!settings.debug) return;
-        const prefix = '[HUD-v30]';
+        const prefix = '[HUD-v32]';
         const styles = {
             'info': 'color: #2196F3',
             'success': 'color: #4CAF50; font-weight: bold',
@@ -114,286 +114,789 @@
 
     // --- CSS ---
     const STYLES = `
-    :root { --hud-font-main: 'Segoe UI', 'Microsoft YaHei', sans-serif; --hud-scale: 1; }
+    :root { 
+        --hud-font-main: 'Segoe UI', 'Microsoft YaHei', sans-serif; 
+        --hud-scale: 1; 
+        --hud-transition-speed: 0.4s;
+        --hud-transition-ease: ease-in-out;
+    }
+    
+    /* 全局平滑过渡 */
+    .hud-kv,
+    .hud-btn-wrapper,
+    .hud-btn-main,
+    .hud-stat-item,
+    .hud-user-card,
+    .hud-send-quick,
+    .hud-idx,
+    .hud-tag-key,
+    .hud-refresh-btn {
+        transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    }
     .hud-root {
         font-size: calc(13px * var(--hud-scale)); font-family: var(--hud-font-main);
         margin: 10px 0 20px 0; border-radius: 12px; overflow: hidden; position: relative;
-        line-height: 1.5; box-shadow: 0 6px 18px rgba(0,0,0,0.15);
-        pointer-events: auto; z-index: 5; user-select: text;
-        transition: all 0.3s ease;
+        line-height: 1.5; box-shadow: 0 5px 12px rgba(0, 0, 0, 0.94);
+        transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
     }
 
-    /* 刷新按钮样式 - 移动端优化 */
+    /* 刷新按钮样式 - 精致小巧 */
     .hud-refresh-btn {
         position: absolute;
         top: 10px;
         right: 10px;
-        width: 32px;
-        height: 32px;
+        width: 28px;
+        height: 28px;
         border-radius: 50%;
         display: flex;
         align-items: center;
         justify-content: center;
         cursor: pointer;
-        opacity: 0.6;
+        opacity: 0.5;
         transition: all 0.3s ease;
         z-index: 10;
-        font-size: 14px;
-        box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+        font-size: 12px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+        backdrop-filter: blur(4px);
     }
     .hud-refresh-btn:hover {
         opacity: 1;
-        transform: rotate(180deg) scale(1.1);
+        transform: rotate(180deg) scale(1.15);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.35);
     }
     .hud-refresh-btn:active {
-        transform: rotate(180deg) scale(0.95);
+        transform: rotate(180deg) scale(0.9);
     }
 
     /* 移动端触摸优化 */
     @media (max-width: 768px) {
         .hud-refresh-btn {
-            width: 36px;
-            height: 36px;
+            width: 34px;
+            height: 34px;
             opacity: 0.7;
-            font-size: 16px;
+            font-size: 14px;
         }
     }
 
-    /* --- Theme 1: Luxury (Business/Gold) --- */
+    /* --- Theme 1: Luxury (Business/Gold) - 升级版 --- */
     .hud-theme-luxury {
-        --bg: #1a2226; --c-val: #eceff1; --border: #c4a47c; 
+        --bg: #0a0e12; --c-val: #eceff1; --border: #c4a47c; 
         --c-name: #ffecb3; --c-key: #90a4ae; --c-title: #ffe082; 
         --c-text: #cfd8dc; --c-idx: #c4a47c;
-        background: linear-gradient(135deg, #1b2327 0%, #263238 100%);
+        --m-bar-color: linear-gradient(90deg, rgba(121, 168, 196, 0.6), rgba(66, 94, 117, 0.75));
+        --s-bar-color: linear-gradient(90deg, rgba(253, 151, 151, 0.85), rgba(255, 195, 195, 0.77));
+        --s-bar-glow: #fff9f984;
+        background: linear-gradient(135deg, #0a0e12 0%, #1a1f26 50%, #0f1419 100%);
         color: var(--c-val);
         border-left: 4px solid var(--border);
         border-right: 1px solid rgba(196, 164, 124, 0.3);
+        position: relative;
     }
     .hud-theme-luxury::before {
-        content: ''; position: absolute; top:0; left:0; right:0; bottom:0; opacity: 0.05;
-        background: repeating-linear-gradient(45deg, #000 0px, #000 2px, transparent 2px, transparent 6px);
+        content: ''; position: absolute; top:0; left:0; right:0; bottom:0; 
+        opacity: 0.03;
+        background: 
+            repeating-linear-gradient(45deg, #000 0px, #000 2px, transparent 2px, transparent 6px),
+            url("data:image/svg+xml,%3Csvg viewBox='0 0 400 400' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='3' numOctaves='4' /%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+        pointer-events: none; z-index: 0;
+    }
+    .hud-theme-luxury::after {
+        content: ''; position: absolute; top:-10%; right:-5%; 
+        width: 250px; height: 250px;
+        background: radial-gradient(circle, rgba(196, 164, 124, 0.1), transparent 60%);
+        pointer-events: none; z-index: 0;
+        /*animation: luxury-glow-float 8s ease-in-out infinite;*/
+    }
+    @keyframes luxury-glow-float {
+        0%, 100% { transform: translate(0, 0) scale(1); opacity: 0.1; }
+        50% { transform: translate(-20px, -20px) scale(1.1); opacity: 0.15; }
+    }
+    .hud-theme-luxury .hud-head { 
+        border-bottom: 1px solid rgba(196, 164, 124, 0.3); 
+        background: rgba(0,0,0,0.3);
+        box-shadow: inset 0 -1px 0 rgba(196, 164, 124, 0.15);
+        position: relative; z-index: 1;
+        backdrop-filter: blur(8px);
+    }
+    .hud-theme-luxury .hud-user-card {
+        background: linear-gradient(145deg, rgba(26, 31, 38, 0.75), rgba(15, 20, 25, 0.85));
+        border: 1px solid rgba(196, 164, 124, 0.4);
+        box-shadow: 
+            inset 0 0 25px rgba(0,0,0,0.5), 
+            0 6px 20px rgba(0,0,0,0.4),
+            0 0 40px rgba(196, 164, 124, 0.1);
+        position: relative;
+        backdrop-filter: blur(12px) saturate(120%);
+    }
+    .hud-theme-luxury .hud-user-card::before {
+        content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px;
+        background: linear-gradient(90deg, transparent, rgba(196, 164, 124, 0.6), transparent);
         pointer-events: none;
     }
-    .hud-theme-luxury .hud-head { border-bottom: 1px solid rgba(196, 164, 124, 0.2); background: rgba(0,0,0,0.2); }
-    .hud-theme-luxury .hud-user-card {
-        background: linear-gradient(to bottom, #222b30, #1d2428);
-        border: 1px solid rgba(196, 164, 124, 0.3);
-        box-shadow: inset 0 0 15px rgba(0,0,0,0.3);
+    .hud-theme-luxury .hud-user-card::after {
+        content: ''; position: absolute; top: 12px; right: 12px;
+        width: 0; height: 0;
+        border-style: solid;
+        border-width: 0 20px 20px 0;
+        border-color: transparent rgba(212, 175, 55, 0.15) transparent transparent;
+        pointer-events: none;
     }
     .hud-theme-luxury .hud-tag-key {
-        color: #d4af37 !important; text-transform: uppercase; letter-spacing: 0.5px;
-        border-bottom: 1px solid rgba(212, 175, 55, 0.2); padding-bottom: 2px; margin-bottom: 3px;
+        color: #d4af37 !important; 
+        text-transform: uppercase; 
+        letter-spacing: 1px;
+        font-weight: 700; 
+        font-size: 0.85em;
+        text-shadow: 0 1px 3px rgba(0,0,0,0.4), 0 0 10px rgba(212, 175, 55, 0.3);
+        padding: 2px 0;
+        justify-content:flex-end;
     }
-    .hud-theme-luxury .hud-kv { border-bottom: 1px dashed rgba(255,255,255,0.05); }
-    .hud-theme-luxury .hud-btn { border-bottom: 1px solid rgba(255,255,255,0.03); }
-    .hud-theme-luxury .hud-btn:hover { background: linear-gradient(90deg, rgba(196, 164, 124, 0.15), transparent); }
-    .hud-theme-luxury .hud-idx { color: #d4af37; border: 1px solid #d4af37; border-radius: 4px; height: 20px; width: 20px; line-height: 18px; font-size: 0.8em; }
-    .hud-theme-luxury .hud-stat-bar-container { background: rgba(0,0,0,0.4); border: 1px solid rgba(196, 164, 124, 0.2); }
-    
-    /* Luxury主题 - 渐变金色系配色 */
-    .hud-theme-luxury .hud-stat-bar-fill.color-0 { background: linear-gradient(90deg, #d4af37, #c4a47c); }
-    .hud-theme-luxury .hud-stat-bar-fill.color-1 { background: linear-gradient(90deg, #b8860b, #daa520); }
-    .hud-theme-luxury .hud-stat-bar-fill.color-2 { background: linear-gradient(90deg, #cd7f32, #e6be8a); }
-    .hud-theme-luxury .hud-stat-bar-fill.color-3 { background: linear-gradient(90deg, #918151, #c9b037); }
-    .hud-theme-luxury .hud-stat-bar-fill.color-4 { background: linear-gradient(90deg, #967117, #d4af37); }
-    .hud-theme-luxury .hud-stat-bar-fill.color-5 { background: linear-gradient(90deg, #aa771c, #ffd700); }
-    
-    .hud-theme-luxury .hud-refresh-btn { background: rgba(196, 164, 124, 0.4); color: #d4af37; border: 1px solid rgba(212, 175, 55, 0.3); }
-    .hud-theme-luxury .hud-refresh-btn:hover { background: rgba(196, 164, 124, 0.7); box-shadow: 0 0 12px rgba(212, 175, 55, 0.6); }
+    .hud-theme-luxury .hud-tag-val {
+        color: #eceff1 !important;
+        font-weight: 500;
+        text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+    }
+    .hud-theme-luxury .hud-kv { 
+        border-bottom: 1px dashed rgba(255,255,255,0.08);
+        transition: background 0.2s ease;
+    }
+    .hud-theme-luxury .hud-kv:hover {
+        background: rgba(196, 164, 124, 0.06);
+    }
+    .hud-theme-luxury .hud-btn-wrapper { 
+        border-bottom: 1px solid rgba(255,255,255,0.04);
+        border-left: 3px solid transparent;
+        transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .hud-theme-luxury .hud-btn-wrapper:hover { 
+        background: linear-gradient(90deg, rgba(196, 164, 124, 0.12), rgba(196, 164, 124, 0.04));
+        border-left: 3px solid rgba(212, 175, 55, 0.6);
+        box-shadow: 0 2px 12px rgba(212, 175, 55, 0.2);
+    }
+    .hud-theme-luxury .hud-idx { 
+        color: #d4af37; 
+        border: 1.5px solid rgba(212, 164, 124, 0.7); 
+        background: linear-gradient(135deg, rgba(212, 175, 55, 0.2), rgba(196, 164, 124, 0.15));
+        box-shadow: inset 0 1px 3px rgba(255,255,255,0.15), 0 3px 8px rgba(0,0,0,0.3);
+    }
+    .hud-theme-luxury .hud-dual-bar-container { 
+        background: rgba(0,0,0,0.6); 
+        border: 1.5px solid rgba(196, 164, 124, 0.3);
+        box-shadow: inset 0 3px 8px rgba(0,0,0,0.5), 0 0 30px rgba(196, 164, 124, 0.15);
+    }
+    .hud-theme-luxury .hud-dual-bar-center {
+        color: rgba(212, 175, 55, 0.9);
+        text-shadow: 0 0 12px rgba(212, 175, 55, 1), 0 0 20px rgba(212, 175, 55, 0.6);
+    }
+    .hud-theme-luxury .hud-refresh-btn { 
+        background: rgba(196, 164, 124, 0.35); 
+        color: #d4af37; 
+        border: 1px solid rgba(212, 175, 55, 0.4);
+    }
+    .hud-theme-luxury .hud-refresh-btn:hover { 
+        background: rgba(196, 164, 124, 0.65); 
+        box-shadow: 0 0 20px rgba(212, 175, 55, 0.8);
+    }
+    .hud-theme-luxury .hud-send-quick { 
+        background: rgba(196, 164, 124, 0.06); 
+        border-left: 1px solid rgba(196, 164, 124, 0.25);
+        transition: all 0.2s ease;
+    }
+    .hud-theme-luxury .hud-send-quick:hover { 
+        background: rgba(196, 164, 124, 0.2);
+        box-shadow: inset 0 0 15px rgba(212, 175, 55, 0.25);
+    }
 
-    /* --- Theme 2: Floral (Fresh/Nature) --- */
+    /* --- Theme 2: Floral (Fresh/Nature) - 升级版 --- */
     .hud-theme-floral {
         --bg: #fff; --c-val: #37474f; --c-name: #2e7d32; --c-key: #558b2f; 
         --c-title: #e57373; --c-text: #546e7a; --c-idx: #fff;
+        --m-bar-color: linear-gradient(90deg, rgba(195, 219, 238, 0.7), rgba(187, 219, 246, 0.85));
+        --s-bar-color: linear-gradient(90deg, rgba(225, 130, 123, 0.85), rgba(255, 174, 163, 0.81));
+        --s-bar-glow: #ffc9c9a9;
         background: #fafafa;
         color: var(--c-val); border-radius: 16px;
         border: 1px solid #e0e0e0;
         background-image: 
-            radial-gradient(circle at 0% 0%, #e8f5e9 0%, transparent 50%), 
-            radial-gradient(circle at 100% 100%, #e1f5fe 0%, transparent 50%);
+            radial-gradient(circle at 15% 20%, rgba(232, 245, 233, 0.7) 0%, transparent 45%), 
+            radial-gradient(circle at 85% 75%, rgba(225, 245, 254, 0.7) 0%, transparent 50%);
+        box-shadow: 0 6px 20px rgba(0,0,0,0.1), inset 0 1px 0 rgba(255,255,255,0.9);
+        position: relative;
     }
-    .hud-theme-floral .hud-head { background: rgba(255,255,255,0.6); backdrop-filter: blur(4px); border-bottom: 1px dashed #b0bec5; }
+    .hud-theme-floral::before {
+        content: '✿'; 
+        position: absolute; 
+        bottom: 20px; 
+        left: 20px;
+        font-size: 6em;
+        color: rgba(232, 245, 233, 0.3);
+        pointer-events: none;
+        z-index: 0;
+    }
+    .hud-theme-floral .hud-head { 
+        background: rgba(255,255,255,0.75); 
+        backdrop-filter: blur(12px) saturate(150%); 
+        border-bottom: 1px dashed #b0bec5;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.06);
+        position: relative;
+        z-index: 1;
+    }
     .hud-theme-floral .hud-user-card {
-        background: rgba(255,255,255,0.9);
-        border: 1px solid #e8f5e9;
-        box-shadow: 2px 4px 12px rgba(0,0,0,0.03);
-        border-radius: 12px;
+        background: linear-gradient(135deg, rgba(255,255,255,0.98), rgba(250, 252, 255, 0.95));
+        border: 1px solid rgba(232, 245, 233, 0.9);
+        box-shadow: 
+            3px 6px 20px rgba(0,0,0,0.08), 
+            inset 0 1px 0 rgba(255,255,255,1),
+            0 0 30px rgba(129, 212, 250, 0.1);
+        border-radius: 16px;
+        position: relative;
+    }
+    .hud-theme-floral .hud-user-card::after {
+        content: ''; position: absolute; bottom: 0; right: 0; 
+        width: 90px; height: 90px;
+        background: radial-gradient(circle, rgba(232, 245, 233, 0.5), transparent 65%);
+        pointer-events: none; border-radius: 0 0 16px 0;
     }
     .hud-theme-floral .hud-tag-key {
-        background: #f1f8e9; padding: 2px 8px; border-radius: 12px; width: fit-content;
-        color: #33691e !important; box-shadow: 1px 1px 2px rgba(0,0,0,0.05);
-    }
-    .hud-theme-floral .hud-kv { border-bottom: 1px dotted #cfd8dc; }
-    .hud-theme-floral .hud-btn { border-radius: 8px; margin: 2px 0; }
-    .hud-theme-floral .hud-btn:hover { background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,0.08); transform: translateX(2px); }
-    .hud-theme-floral .hud-idx { background: #78909c; border-radius: 50%; width: 24px; height: 24px; box-shadow: 1px 2px 4px rgba(0,0,0,0.2); }
-    .hud-theme-floral .hud-stat-bar-container { background: #e0e0e0; border: 1px solid #c8e6c9; }
-    
-    /* Floral主题 - 清新自然配色 */
-    .hud-theme-floral .hud-stat-bar-fill.color-0 { background: linear-gradient(90deg, #66bb6a, #43a047); }
-    .hud-theme-floral .hud-stat-bar-fill.color-1 { background: linear-gradient(90deg, #42a5f5, #1e88e5); }
-    .hud-theme-floral .hud-stat-bar-fill.color-2 { background: linear-gradient(90deg, #26a69a, #00897b); }
-    .hud-theme-floral .hud-stat-bar-fill.color-3 { background: linear-gradient(90deg, #ab47bc, #8e24aa); }
-    .hud-theme-floral .hud-stat-bar-fill.color-4 { background: linear-gradient(90deg, #ef5350, #e53935); }
-    .hud-theme-floral .hud-stat-bar-fill.color-5 { background: linear-gradient(90deg, #ff7043, #f4511e); }
-    
-    .hud-theme-floral .hud-refresh-btn { background: rgba(120, 144, 156, 0.4); color: #558b2f; border: 1px solid rgba(85, 139, 47, 0.3); }
-    .hud-theme-floral .hud-refresh-btn:hover { background: rgba(120, 144, 156, 0.7); box-shadow: 0 0 10px rgba(85, 139, 47, 0.5); }
-
-    /* --- Theme 3: Candy (Pop/Vibrant) --- */
-    .hud-theme-candy {
-        --bg: #fff0f5;
-        --c-val: #4a0072;
-        --c-name: #d500f9;
-        --c-key: #c51162;
-        --c-title: #f57c00;
-        --c-text: #3e2723;
-        --c-idx: #fff;
-        background: var(--bg);
-        color: var(--c-val);
-        border: 3px solid #ff80ab;
-        border-radius: 20px;
-        background-image: radial-gradient(#ffc1e3 15%, transparent 16%), radial-gradient(#ffc1e3 15%, transparent 16%);
-        background-position: 0 0, 10px 10px;
-        background-size: 20px 20px;
-        box-shadow: 4px 4px 0px #ff80ab;
-    }
-    .hud-theme-candy .hud-head { background: rgba(255,255,255,0.8); border-bottom: 2px solid #ff80ab; }
-    .hud-theme-candy .hud-user-card {
-        background: #fff;
+        background: linear-gradient(135deg, #f1f8e9, #e8f5e9); 
+        padding: 4px 14px; 
         border-radius: 16px;
-        border: 2px solid #b39ddb;
-        box-shadow: 3px 3px 0 #b39ddb;
-        color: #333;
+        color: #33691e !important; 
+        box-shadow: 0 3px 6px rgba(0,0,0,0.1), inset 0 1px 0 rgba(255,255,255,0.6);
+        font-weight: 700; 
+        font-size: 0.85em; 
+        display: inline-block;
+        justify-content:flex-end;
+        text-align:right;
     }
-    .hud-theme-candy .hud-user-name {
-        text-shadow: 1px 1px 0 #ffeb3b; letter-spacing: 1px;
-        background: #f3e5f5; padding: 4px; border-radius: 8px; text-align: center;
+    .hud-theme-floral .hud-tag-val {
+        color: #37474f !important;
+        font-weight: 500;
     }
-    .hud-theme-candy .hud-tag-key {
-        color: #fff !important; background: #ff4081; 
-        padding: 3px 10px; border-radius: 20px; font-weight: 800; 
-        box-shadow: 1px 2px 0 rgba(0,0,0,0.1);
-        display: inline-flex;
+    .hud-theme-floral .hud-kv { 
+        border-bottom: 1px dotted #cfd8dc;
+        transition: background 0.2s ease;
     }
-    .hud-theme-candy .hud-tag-val { color: #4a148c; font-weight: 600; padding-left: 4px; }
-    .hud-theme-candy .hud-kv { border-bottom: 2px dotted #ffc1e3; margin-bottom: 10px; }
-    .hud-theme-candy .hud-btn {
-        margin-bottom: 4px; background: rgba(255,255,255,0.6); 
-        border: 2px solid transparent; border-radius: 12px;
+    .hud-theme-floral .hud-kv:hover {
+        background: rgba(232, 245, 233, 0.35);
     }
-    .hud-theme-candy .hud-btn:hover { 
-        background: #fff; border-color: #00bcd4; box-shadow: 2px 2px 0 #00bcd4; 
+    .hud-theme-floral .hud-btn-wrapper { 
+        border-radius: 10px; 
+        margin: 4px 0;
+        transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        border: 1px solid transparent;
     }
-    .hud-theme-candy .hud-idx { 
-        background: #00bcd4; border-radius: 50%; 
-        width: 26px; height: 26px; border: 2px solid #fff; box-shadow: 1px 1px 3px rgba(0,0,0,0.2);
+    .hud-theme-floral .hud-btn-wrapper:hover { 
+        background: rgba(255,255,255,0.95); 
+        box-shadow: 0 4px 16px rgba(0,0,0,0.12); 
+        transform: translateX(3px);
+        border-color: rgba(129, 212, 250, 0.4);
     }
-    .hud-theme-candy .hud-stat-bar-container { background: #ffc1e3; border: 1px solid #ff80ab; }
-    
-    /* Candy主题 - 活力糖果配色 */
-    .hud-theme-candy .hud-stat-bar-fill.color-0 { background: linear-gradient(90deg, #ff4081, #f50057); }
-    .hud-theme-candy .hud-stat-bar-fill.color-1 { background: linear-gradient(90deg, #e040fb, #d500f9); }
-    .hud-theme-candy .hud-stat-bar-fill.color-2 { background: linear-gradient(90deg, #00bcd4, #00acc1); }
-    .hud-theme-candy .hud-stat-bar-fill.color-3 { background: linear-gradient(90deg, #ffd600, #ffc400); }
-    .hud-theme-candy .hud-stat-bar-fill.color-4 { background: linear-gradient(90deg, #ff6e40, #ff5722); }
-    .hud-theme-candy .hud-stat-bar-fill.color-5 { background: linear-gradient(90deg, #69f0ae, #00e676); }
-    
-    .hud-theme-candy .hud-refresh-btn { background: rgba(255, 64, 129, 0.4); color: #c51162; border: 2px solid rgba(197, 17, 98, 0.3); }
-    .hud-theme-candy .hud-refresh-btn:hover { background: rgba(255, 64, 129, 0.7); box-shadow: 0 0 12px rgba(197, 17, 98, 0.6); }
+    .hud-theme-floral .hud-idx { 
+        background: linear-gradient(135deg, #78909c, #607d8b); 
+        border-radius: 10px;
+        box-shadow: 0 3px 8px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.3);
+    }
+    .hud-theme-floral .hud-dual-bar-container { 
+        background: rgba(224, 224, 224, 0.85); 
+        border: 1.5px solid rgba(200, 230, 201, 0.7);
+        box-shadow: inset 0 2px 6px rgba(0,0,0,0.18);
+    }
+    .hud-theme-floral .hud-dual-bar-center {
+        color: rgba(85, 139, 47, 0.9);
+        text-shadow: 0 0 10px rgba(85, 139, 47, 1), 0 0 18px rgba(85, 139, 47, 0.5);
+    }
+    .hud-theme-floral .hud-refresh-btn { 
+        background: rgba(120, 144, 156, 0.4); 
+        color: #558b2f; 
+        border: 1px solid rgba(85, 139, 47, 0.35);
+    }
+    .hud-theme-floral .hud-refresh-btn:hover { 
+        background: rgba(120, 144, 156, 0.75); 
+        box-shadow: 0 0 16px rgba(85, 139, 47, 0.7);
+    }
+    .hud-theme-floral .hud-send-quick { 
+        background: rgba(120, 144, 156, 0.04); 
+        border-left: 1px solid rgba(120, 144, 156, 0.25);
+        transition: all 0.2s ease;
+    }
+    .hud-theme-floral .hud-send-quick:hover { 
+        background: rgba(120, 144, 156, 0.18);
+        box-shadow: inset 0 0 12px rgba(120, 144, 156, 0.25);
+    }
 
-    /* --- Dynamic Character Stat Bar Styles --- */
-    .hud-stat-bar-wrapper {
-        display: grid;
-        grid-template-columns: repeat(2, 1fr);
-        gap: 6px 10px;
-        margin-bottom: 12px;
-        padding-bottom: 12px;
+    /* --- Theme 3: Sensual (Dark Romance) - 全新情欲风格 --- */
+    .hud-theme-sensual {
+        --bg: #1a0a0e; --c-val: #f4d2d9; --border: #d4a574; 
+        --c-name: #f4a4b7; --c-key: #f4a4b7; --c-title: #d4a574; 
+        --c-text: #f4d2d9; --c-idx: #f4d2d9;
+        --m-bar-color: linear-gradient(90deg, rgba(69, 43, 64, 0.85), rgba(98, 74, 94, 0.95));
+        --s-bar-color: linear-gradient(90deg, rgba(122, 42, 69, 0.95), rgba(183, 92, 118, 1), rgba(244, 164, 183, 0.95));
+        --s-bar-glow: rgba(244, 164, 183, 0.8);
+        background: 
+            radial-gradient(circle at 15% 20%, rgba(117, 8, 81, 0.12), transparent 40%),
+            radial-gradient(circle at 85% 80%, rgba(122, 42, 51, 0.15), transparent 50%),
+            linear-gradient(135deg, #1a0a0e 0%, #2d1419 50%, #1f0f14 100%);
+        color: var(--c-val);
+        border-left: 4px solid rgba(212, 165, 116, 0.5);
+        border-right: 1px solid rgba(212, 165, 116, 0.2);
+        box-shadow: 0 8px 24px rgba(0,0,0,0.6), 0 0 60px rgba(117, 8, 81, 0.2);
+        position: relative;
+    }
+    .hud-theme-sensual::before {
+        content: ''; position: absolute; top:0; left:0; right:0; bottom:0; 
+        opacity: 0.03;
+        background: url("data:image/svg+xml,%3Csvg viewBox='0 0 400 400' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='velvet'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='2' numOctaves='3' /%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23velvet)'/%3E%3C/svg%3E");
+        pointer-events: none; z-index: 0;
+    }
+    .hud-theme-sensual::after {
+        content: ''; position: absolute; top: 0; right: 0;
+        width: 300px; height: 300px;
+        background: radial-gradient(circle, rgba(117, 8, 81, 0.15), transparent 60%);
+        pointer-events: none; z-index: 0;
+        /*animation: sensual-ambient 10s ease-in-out infinite;*/
+    }
+    @keyframes sensual-ambient {
+        0%, 100% { transform: translate(0, 0); opacity: 0.15; }
+        50% { transform: translate(-30px, 30px); opacity: 0.25; }
+    }
+    .hud-theme-sensual .hud-head { 
+        border-bottom: 1px solid rgba(212, 165, 116, 0.25); 
+        background: rgba(0,0,0,0.4);
+        box-shadow: inset 0 -1px 0 rgba(244, 164, 183, 0.1);
+        position: relative; z-index: 1;
+        backdrop-filter: blur(10px) saturate(130%);
+    }
+    .hud-theme-sensual .hud-user-card {
+        background: linear-gradient(145deg, rgba(45, 20, 25, 0.85), rgba(26, 10, 14, 0.95));
+        border: 1px solid rgba(212, 165, 116, 0.35);
+        box-shadow: 
+            0 10px 40px rgba(0, 0, 0, 0.7),
+            inset 0 1px 0 rgba(244, 164, 183, 0.15),
+            0 0 50px rgba(117, 8, 81, 0.25);
+        position: relative;
+        backdrop-filter: blur(15px) saturate(150%);
+    }
+    .hud-theme-sensual .hud-user-card::before {
+        content: ''; position: absolute; top: 0; left: 0; right: 0; height: 1px;
+        background: linear-gradient(90deg, transparent, rgba(244, 164, 183, 0.4), transparent);
+        pointer-events: none;
+    }
+    .hud-theme-sensual .hud-user-card::after {
+        content: '❦'; 
+        position: absolute; 
+        bottom: 10px; 
+        right: 10px;
+        font-size: 2em;
+        color: rgba(212, 165, 116, 0.15);
+        text-shadow: 0 0 20px rgba(117, 8, 81, 0.4);
+        pointer-events: none;
+    }
+    .hud-theme-sensual .hud-user-name {
+        background: linear-gradient(135deg, rgba(117, 8, 81, 0.4), rgba(122, 42, 51, 0.3));
+        border-bottom: 2px solid transparent;
+        border-image: linear-gradient(90deg, transparent, rgba(212, 165, 116, 0.6), transparent) 1;
+        text-shadow: 0 2px 8px rgba(0, 0, 0, 0.8), 0 0 20px rgba(244, 164, 183, 0.4);
+        color: #f4d2d9;
+        letter-spacing: 2px;
+        font-weight: 800;
+        padding: 8px 12px;
+        border-radius: 8px 8px 0 0;
+    }
+    .hud-theme-sensual .hud-tag-key {
+        background: linear-gradient(135deg, rgba(117, 8, 81, 0.35), rgba(74, 57, 71, 0.45));
+        color: #f4a4b7 !important;
+        padding: 4px 14px;
+        border-radius: 18px;
+        border: 1px solid rgba(212, 165, 116, 0.3);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(244, 164, 183, 0.25);
+        font-weight: 700;
+        font-size: 0.85em;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        display: inline-block;
+        justify-content: flex-end; 
+        text-align: right; 
+    }
+    .hud-theme-sensual .hud-tag-val {
+        color: #f4d2d9 !important;
+        font-weight: 500;
+        text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+    }
+    .hud-theme-sensual .hud-kv { 
+        border-bottom: 1px dashed rgba(212, 165, 116, 0.15);
+        transition: background 0.2s ease;
+    }
+    .hud-theme-sensual .hud-kv:hover {
+        background: rgba(117, 8, 81, 0.1);
+    }
+    .hud-theme-sensual .hud-btn-wrapper { 
+        border-bottom: 1px solid rgba(212, 165, 116, 0.08);
+        border-left: 3px solid transparent; 
+        transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .hud-theme-sensual .hud-btn-wrapper:hover { 
+        background: linear-gradient(90deg, rgba(117, 8, 81, 0.15), rgba(122, 42, 51, 0.1));
+        border-left: 3px solid rgba(212, 165, 116, 0.6);
+        box-shadow: 0 4px 20px rgba(117, 8, 81, 0.3), inset 0 0 20px rgba(244, 164, 183, 0.05);
+        transform: translateX(4px);
+    }
+    .hud-theme-sensual .hud-idx { 
+        background: linear-gradient(135deg, rgba(122, 42, 51, 0.8), rgba(117, 8, 81, 0.9));
+        border: 2px solid rgba(212, 165, 116, 0.5);
+        box-shadow: 
+            0 4px 12px rgba(0, 0, 0, 0.5),
+            inset 0 1px 0 rgba(244, 164, 183, 0.3),
+            0 0 20px rgba(117, 8, 81, 0.4);
+        color: #f4d2d9;
+    }
+    .hud-theme-sensual .hud-dual-bar-container { 
+        background: rgba(0, 0, 0, 0.6);
+        border: 1.5px solid rgba(212, 165, 116, 0.3);
+        box-shadow: inset 0 3px 8px rgba(0, 0, 0, 0.8), 0 0 30px rgba(117, 8, 81, 0.3);
+    }
+    .hud-theme-sensual .hud-dual-bar-center {
+        color: rgba(212, 165, 116, 0.9);
+        text-shadow: 0 0 12px rgba(212, 165, 116, 1), 0 0 20px rgba(212, 165, 116, 0.6);
+    }
+    .hud-theme-sensual .hud-refresh-btn { 
+        background: rgba(122, 42, 51, 0.4);
+        border: 1.5px solid rgba(212, 165, 116, 0.4);
+        color: #f4a4b7;
+        backdrop-filter: blur(8px);
+    }
+    .hud-theme-sensual .hud-refresh-btn:hover { 
+        background: rgba(122, 42, 51, 0.7);
+        box-shadow: 0 0 20px rgba(244, 164, 183, 0.7), 0 0 40px rgba(117, 8, 81, 0.5);
+    }
+    .hud-theme-sensual .hud-send-quick { 
+        background: rgba(122, 42, 51, 0.08);
+        border-left: 1px solid rgba(212, 165, 116, 0.25);
+        color: #f4a4b7;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .hud-theme-sensual .hud-send-quick:hover { 
+        background: rgba(122, 42, 51, 0.25);
+        box-shadow: inset 0 0 20px rgba(183, 92, 118, 0.3), 0 0 15px rgba(244, 164, 183, 0.5);
+        transform: scale(1.1);
+    }
+
+    /* --- 高级双向数值条 M/S --- */
+    .hud-merged-stat-wrapper {
+        margin-bottom: 14px;
+        padding-bottom: 14px;
         border-bottom: 1px solid rgba(128,128,128,0.2);
     }
-    .hud-stat-bar-wrapper.single-col {
-        grid-template-columns: 1fr;
-    }
-    .hud-stat-bar {
+    .hud-dual-bar-container {
+        height: 32px;
+        border-radius: 16px;
+        overflow: hidden;
+        position: relative;
         display: flex;
-        flex-direction: column;
-        gap: 4px;
-        font-size: 0.9em;
     }
-    .hud-stat-bar-label {
-        font-weight: 600;
-        opacity: 0.9;
-        font-size: 0.85em;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-    }
-    .hud-stat-bar-container {
-        height: 18px;
-        border-radius: 9px;
-        overflow: hidden;
-        position: relative;
-    }
-    .hud-stat-bar-fill {
+    .hud-dual-bar-m {
         height: 100%;
-        border-radius: 9px;
-        transition: width 0.4s ease;
-        position: relative;
-    }
-    .hud-stat-bar-text {
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        height: 100%;
+        background: var(--m-bar-color);
         display: flex;
         align-items: center;
         justify-content: center;
-        font-size: 0.75em;
+        font-size: 0.9em;
+        font-weight: 900;
+        color: rgba(255,255,255,0.95);
+        text-shadow: 
+            0 1px 3px rgba(0,0,0,0.5), 
+            0 0 10px rgba(255,255,255,0.4);
+        transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+        position: relative;
+        letter-spacing: 1.5px;
+        border-right: 1px solid rgba(0,0,0,0.3);
+        box-shadow: inset 2px 0 10px rgba(0, 0, 0, 0.4);
+    }
+    .hud-dual-bar-s {
+        height: 100%;
+        background: var(--s-bar-color);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.9em;
+        font-weight: 900;
+        color: rgba(255,255,255,0.98);
+        text-shadow: 
+            0 1px 3px rgba(0,0,0,0.6), 
+            0 0 12px rgba(255,255,255,0.5);
+        transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+        position: relative;
+        letter-spacing: 1.5px;
+        box-shadow: 
+            0 0 20px var(--s-bar-glow), 
+            0 0 35px var(--s-bar-glow),
+            0 0 50px var(--s-bar-glow),
+            inset 0 2px 6px rgba(255,255,255,0.4),
+            inset 0 -3px 8px rgba(0,0,0,0.3);
+        /*animation: premium-glow-pulse 2.5s ease-in-out infinite;*/
+    }
+    @keyframes premium-glow-pulse {
+        0%, 100% { 
+            filter: brightness(1) saturate(100%);
+            box-shadow: 
+                0 0 20px var(--s-bar-glow), 
+                0 0 35px var(--s-bar-glow),
+                0 0 50px var(--s-bar-glow),
+                inset 0 2px 6px rgba(255,255,255,0.4),
+                inset 0 -3px 8px rgba(0,0,0,0.3);
+        }
+        50% { 
+            filter: brightness(1.25) saturate(130%);
+            box-shadow: 
+                0 0 30px var(--s-bar-glow), 
+                0 0 50px var(--s-bar-glow),
+                0 0 70px var(--s-bar-glow),
+                0 0 90px rgba(255,255,255,0.3),
+                inset 0 2px 8px rgba(255,255,255,0.6),
+                inset 0 -3px 10px rgba(0,0,0,0.4);
+        }
+    }
+    .hud-dual-bar-center {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        font-size: 0.7em;
+        font-weight: 900;
+        z-index: 10;
+        pointer-events: none;
+    }
+
+    /* --- 人物属性横向布局（10px间距） --- */
+    .hud-kv {
+        display: grid;
+        grid-template-columns: 70px 1fr;
+        gap: 20px;
+        align-items: center;
+        padding: 8px 0;
+        margin-bottom: -10px;
+        min-heigh: 20px;
+    }
+    .hud-kv:last-child {
+        border-bottom: none;
+        margin-bottom: 0;
+        padding-bottom: 14px;
+    }
+    .hud-tag-key {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        white-space: nowrap;
+        justify-content:flex-end;
+        width:100%;
+        text-align:right;
+    }
+    .hud-tag-val {
+        font-size: 0.95em;
+        line-height: 1.5;
+        opacity: 0.95;
+        white-space: pre-wrap;
+        text-align: left;
+        word-break: break-word;
+        display:flex;
+        align-items:center;
+    }
+
+    /* --- 行动选项优化布局 --- */
+    .hud-opts-container {
+        width: 100%;
+        overflow-x: auto;
+        padding: 6px 16px;
+        scrollbar-width: thin;
+    }
+    .hud-opts-list {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        min-width: 400px;
+        width: 100%;
+    }
+    .hud-btn-wrapper {
+        display: flex;
+        align-items: stretch;
+        transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        cursor: pointer;
+        width: 100%;
+        min-height: 36px;
+        border-radius: 8px;
+        overflow: hidden;
+    }
+    .hud-btn-left {
+        flex: 0 0 75px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 5px;
+        padding: 8px 6px;
+    }
+    .hud-idx {
+        font-weight: 900;
+        font-size: 1.15em;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 34px;
+        height: 34px;
+        border-radius: 10px;
+        transition: all 0.2s ease;
+    }
+    .hud-btn-title-small {
         font-weight: 700;
-        color: rgba(0,0,0,0.7);
-        text-shadow: 0 0 3px rgba(255,255,255,0.9);
+        font-size: 0.7em;
+        text-align: center;
+        line-height: 1.2;
+        opacity: 0.85;
+        max-width: 100%;
+        word-break: break-word;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    .hud-btn-main {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        padding: 6px 10px;
+        font-size: 0.95em;
+        line-height: 1.3;
+        transition: all 0.2s ease;
+    }
+    .hud-send-quick {
+        flex: 0 0 52px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        opacity: 0.35;
+        transition: all 0.25s ease;
+        font-size: 1.15em;
+        cursor: pointer;
+    }
+    .hud-send-quick:hover {
+        opacity: 1;
+        transform: scale(1.15);
+    }
+    .hud-send-quick:active {
+        transform: scale(0.95);
+    }
+
+    @media (max-width: 768px) {
+        .hud-btn-left {
+            flex: 0 0 70px;
+        }
+        .hud-send-quick {
+            flex: 0 0 58px;
+            opacity: 0.5;
+        }
+        .hud-idx {
+            width: 38px;
+            height: 38px;
+            font-size: 1.2em;
+        }
+        .hud-btn-title-small {
+            font-size: 0.65em;
+        }
     }
 
     /* --- General Layout --- */
-    .hud-head { padding: 10px 16px; display: flex; flex-wrap: wrap; gap: 15px; font-size: 0.9em; align-items: center; }
-    .hud-stat-item { display: flex; align-items: center; gap: 8px; font-weight: 500; }
-    
-    .hud-users-toggle { 
-        padding: 8px 16px; font-size: 0.9em; display: flex; justify-content: space-between; 
-        background: rgba(0,0,0,0.03); font-weight: bold; cursor: pointer; user-select: none; 
-        border-top: 1px solid rgba(0,0,0,0.05); border-bottom: 1px solid rgba(0,0,0,0.05);
+    .hud-head {
+        padding: 12px 18px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 16px;
+        font-size: 0.9em;
+        align-items: center;
+        position: relative;
+        z-index: 1;
     }
-    .hud-users-scroll { display: flex; overflow-x: auto; gap: 14px; padding: 14px 16px; scrollbar-width: thin; }
-    .hud-user-card { flex: 0 0 280px; padding: 14px; display: flex; flex-direction: column; gap: 8px; transition: transform 0.2s; }
-    .hud-user-card:hover { transform: translateY(-2px); }
-    
-    .hud-user-name { font-weight: 800; font-size: 1.25em; margin-bottom: 6px; border-bottom: 2px solid rgba(0,0,0,0.05); padding-bottom: 6px; }
-    .hud-kv { display: flex; flex-direction: column; gap: 4px; padding-bottom: 8px; margin-bottom: 8px; }
-    .hud-kv:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
-    .hud-tag-key { font-size: 1.05em; opacity: 0.95; font-weight: bold; display: flex; align-items: center; gap: 6px; }
-    .hud-tag-val { font-size: 1em; line-height: 1.4; padding-left: 2px; opacity: 0.95; white-space: pre-wrap; }
-
-    .hud-opts-container { width: 100%; overflow-x: auto; padding: 10px 16px; scrollbar-width: thin; }
-    .hud-opts-list { 
-        display: flex; flex-direction: column; gap: 4px; 
-        min-width: 400px;
-        width: fit-content; min-width: 100%; 
+    .hud-stat-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-weight: 500;
+        padding: 4px 8px;
+        border-radius: 6px;
+        transition: background 0.2s ease;
     }
-    .hud-btn { display: flex; align-items: center; padding: 6px 10px; transition: all 0.2s; width: 100%; cursor: pointer; }
-    .hud-idx { flex: 0 0 26px; text-align: center; font-weight: bold; font-size: 0.95em; margin-right: 10px; display: flex; align-items: center; justify-content: center; }
-    
-    .hud-btn-content { 
-        flex: 1; font-size: 0.95em; line-height: 1.4; 
-        display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; 
+    .hud-stat-item:hover {
+        background: rgba(255,255,255,0.05);
     }
-    .hud-btn-title { font-weight: 800; font-size: 1em; margin-right: 0; white-space: nowrap; }
-    .hud-btn-text { opacity: 0.9; flex: 1; min-width: 200px; }
     
-    .hud-tips { padding: 10px 16px; font-size: 0.9em; opacity: 0.8; border-top: 1px dashed rgba(128,128,128,0.3); font-style: italic; background: rgba(0,0,0,0.015); }
-    .hud-hide { display: none !important; }
-    .collapsed { display: none; }
-    .rotate-icon { transform: rotate(180deg); transition: transform 0.3s; }
+    .hud-users-toggle {
+        padding: 10px 18px;
+        font-size: 0.95em;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        background: rgba(0,0,0,0.03);
+        font-weight: 700;
+        cursor: pointer;
+        user-select: none;
+        border-top: 1px solid rgba(0,0,0,0.05);
+        border-bottom: 1px solid rgba(0,0,0,0.05);
+        transition: background 0.2s ease;
+        position: relative;
+        z-index: 1;
+    }
+    .hud-users-toggle:hover {
+        background: rgba(0,0,0,0.05);
+    }
+    .hud-users-scroll {
+        display: flex;
+        overflow-x: auto;
+        gap: 16px;
+        padding: 16px;
+        scrollbar-width: thin;
+        position: relative;
+        z-index: 1;
+    }
+    .hud-user-card {
+        flex: 0 0 290px;
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        transition: transform 0.3s ease, box-shadow 0.3s ease;
+        border-radius: 12px;
+    }
+    .hud-user-card:hover {
+        transform: translateY(-6px) scale(1.01);
+    }
+    
+    .hud-user-name {
+        font-weight: 800;
+        font-size: 1.3em;
+        margin-bottom: 8px;
+        border-bottom: 2px solid rgba(0,0,0,0.05);
+        padding-bottom: 8px;
+        letter-spacing: 0.5px;
+    }
+    
+    .hud-tips {
+        padding: 12px 18px;
+        font-size: 0.9em;
+        opacity: 0.85;
+        border-top: 1px dashed rgba(128,128,128,0.3);
+        font-style: italic;
+        background: rgba(0,0,0,0.02);
+        line-height: 1.6;
+        position: relative;
+        z-index: 1;
+    }
+    .hud-hide {
+        display: none !important;
+    }
+    .collapsed {
+        display: none;
+    }
+    .rotate-icon {
+        transform: rotate(180deg);
+        transition: transform 0.3s ease;
+    }
     `;
 
     // --- Initialization ---
@@ -406,7 +909,7 @@
 
     function initScript() {
         log('═══════════════════════════════════════', 'info');
-        log('🚀 Initializing HUD Script v30.1...', 'info');
+        log('🚀 Initializing HUD Script v32.0...', 'info');
         log('═══════════════════════════════════════', 'info');
         
         loadSettings();
@@ -431,11 +934,11 @@
             processChatDOM('Init');
             log('✓ Initial processing complete', 'success');
             log('═══════════════════════════════════════', 'success');
-            log('🎉 HUD Script v30.1 LOADED SUCCESSFULLY!', 'success');
+            log('🎉 HUD Script v32.0 LOADED SUCCESSFULLY!', 'success');
             log('═══════════════════════════════════════', 'success');
             
             if (typeof toastr !== 'undefined') {
-                toastr.success('美化终端 v30.1 加载成功！', '终端系统', {timeOut: 3000});
+                toastr.success('美化终端 v32.0 加载成功！', '终端系统', {timeOut: 3000});
             }
         }, 1000);
     }
@@ -457,15 +960,23 @@
             log('→ Users list toggled', 'info');
         });
 
-        $chat.on('click', '.hud-btn', function(e) {
+        $chat.on('click', '.hud-btn-main', function(e) {
             e.stopPropagation(); e.preventDefault();
-            const fullText = decodeURIComponent($(this).attr('data-full-text'));
+            const fullText = decodeURIComponent($(this).closest('.hud-btn-wrapper').attr('data-full-text'));
             $('#send_textarea').val(fullText).trigger('input').focus();
             log(`→ Option selected: ${fullText}`, 'info');
             if (settings.autoSend) {
                 setTimeout(() => $('#send_but').trigger('click'), 100);
                 log('→ Auto-sending message...', 'info');
             }
+        });
+
+        $chat.on('click', '.hud-send-quick', function(e) {
+            e.stopPropagation(); e.preventDefault();
+            const fullText = decodeURIComponent($(this).closest('.hud-btn-wrapper').attr('data-full-text'));
+            $('#send_textarea').val(fullText).trigger('input');
+            setTimeout(() => $('#send_but').trigger('click'), 100);
+            log(`→ Quick send: ${fullText}`, 'info');
         });
 
         $chat.on('click', '.hud-refresh-btn', function(e) {
@@ -644,9 +1155,9 @@
         return [str.substring(0, match.index).trim(), str.substring(match.index + match[0].length).trim()];
     }
 
-    // --- 生成动态数值条HTML (修改：添加颜色类) ---
-    function renderStatBars(characterName) {
-        log(`→ Rendering stat bars for: ${characterName}`, 'data');
+    // --- 生成合并双向数值条 M/S（修正：根据键名识别）---
+    function renderMergedStatBar(characterName) {
+        log(`→ Rendering merged stat bar for: ${characterName}`, 'data');
         
         if (!characterStats[characterName]) {
             log(`→ No stats found for ${characterName}`, 'info');
@@ -655,44 +1166,61 @@
 
         const stats = characterStats[characterName];
         const statKeys = Object.keys(stats);
-        const statCount = statKeys.length;
         
-        log(`→ Found ${statCount} attributes for ${characterName}`, 'data');
+        if (statKeys.length < 2) {
+            log(`→ Less than 2 stats, skipping merged bar for ${characterName}`, 'info');
+            return '';
+        }
 
-        if (statCount === 0) return '';
-
-        const layoutClass = statCount <= 2 ? 'single-col' : '';
+        // 修正：根据键名判断M和S
+        let mKey = null;
+        let sKey = null;
         
-        let html = `<div class="hud-stat-bar-wrapper ${layoutClass}">`;
+        for (let key of statKeys) {
+            const upperKey = key.toUpperCase();
+            if (upperKey.includes('M') && !upperKey.includes('S')) {
+                mKey = key;
+            } else if (upperKey.includes('S') && !upperKey.includes('M')) {
+                sKey = key;
+            }
+        }
         
-        statKeys.forEach((key, index) => {
-            const stat = stats[key];
-            const shortLabel = key;
-            const value = stat.value;
-            const max = stat.max;
-            const safeValue = Math.max(0, Math.min(max, value || 0));
-            const percentage = (safeValue / max) * 100;
-            
-            // 为每个数值条分配颜色类（循环使用0-5）
-            const colorClass = `color-${index % 6}`;
-            
-            html += `
-                <div class="hud-stat-bar">
-                    <div class="hud-stat-bar-label" title="${stat.label}">${shortLabel}</div>
-                    <div class="hud-stat-bar-container">
-                        <div class="hud-stat-bar-fill ${colorClass}" style="width: ${percentage}%">
-                            <div class="hud-stat-bar-text">${safeValue}/${max}</div>
-                        </div>
+        // 如果没找到，使用前两个
+        if (!mKey) mKey = statKeys[0];
+        if (!sKey) sKey = statKeys[1];
+        
+        const mStat = stats[mKey];
+        const sStat = stats[sKey];
+        
+        const mValue = Math.max(0, Math.min(mStat.max, mStat.value || 0));
+        const sValue = Math.max(0, Math.min(sStat.max, sStat.value || 0));
+        
+        // 计算显示宽度
+        const total = mValue + sValue;
+        const mWidth = total > 0 ? (mValue / total) * 100 : 50;
+        const sWidth = total > 0 ? (sValue / total) * 100 : 50;
+        
+        log(`→ ${mKey}(M): ${mValue}/${mStat.max} (${mWidth.toFixed(1)}%), ${sKey}(S): ${sValue}/${sStat.max} (${sWidth.toFixed(1)}%)`, 'data');
+        
+        // 仅显示字母
+        let html = `
+            <div class="hud-merged-stat-wrapper">
+                <div class="hud-dual-bar-container">
+                    <div class="hud-dual-bar-s" style="width: ${sWidth}%">
+                        <span>S</span>
                     </div>
+                    <div class="hud-dual-bar-m" style="width: ${mWidth}%">
+                        <span>M</span>
+                    </div>
+                    <div class="hud-dual-bar-center" style="left: ${sWidth}%;">○</div>
                 </div>
-            `;
-        });
+            </div>
+        `;
         
-        html += `</div>`;
         return html;
     }
 
-    // --- Rendering (修改：调整渲染顺序) ---
+    // --- Rendering ---
     function renderHUD(data) {
         log('→ Rendering HUD HTML...', 'info');
         let html = `<div class="hud-root">`;
@@ -711,15 +1239,21 @@
             html += `</div>`;
         }
 
-        // 2. Users (修改：数值条放在第一位)
+        // 2. Users
         if (data.users.length) {
             html += `<div class="hud-users-toggle"><span><i class="fa-solid fa-users"></i> 人物列表 (${data.users.length})</span><i class="fa-solid fa-chevron-down"></i></div>`;
             html += `<div class="hud-users-scroll collapsed">`;
-            data.users.forEach(u => {
+                // 新增：按名字排序
+                const sortedUsers = data.users.sort((a, b) => {
+                const nameA = a['名字'] || a['Name'] || '';
+                const nameB = b['名字'] || b['Name'] || '';
+                return nameA.localeCompare(nameB, 'zh-CN');  // 中文拼音排序
+            });
+                sortedUsers.forEach(u => {
                 let name = u['名字'] || u['Name'] || 'Unknown';
                 
-                // 先渲染数值条（放在第一、二行）
-                const statBars = renderStatBars(name);
+                // 先渲染合并数值条
+                const mergedBar = renderMergedStatBar(name);
                 
                 // 再渲染其他属性
                 let props = '';
@@ -730,11 +1264,14 @@
                     if (k.includes('状态')) icon = 'fa-heart-pulse';
                     if (k.includes('穿搭') || k.includes('衣')) icon = 'fa-shirt';
                     if (k.includes('行动')) icon = 'fa-person-running';
+                    if (k.includes('身高')) icon = 'fa-person';
+                    if (k.includes('性器')) icon = 'fa-droplet';
+                    if (k.includes('胸部')) icon = 'fa-egg';
+                    if (k.includes('肛门')) icon = 'fa-circle-dot';
                     props += `<div class="hud-kv"><div class="hud-tag-key"><i class="fa-solid ${icon}"></i> ${k}</div><div class="hud-tag-val">${u[k]}</div></div>`;
                 }
                 
-                // 顺序：名字 -> 数值条 -> 其他属性
-                html += `<div class="hud-user-card"><div class="hud-user-name">${name}</div>${statBars}${props}</div>`;
+                html += `<div class="hud-user-card"><div class="hud-user-name">${name}</div>${mergedBar}${props}</div>`;
             });
             html += `</div>`;
         }
@@ -743,9 +1280,18 @@
         if (data.options.length) {
             html += `<div class="hud-opts-container"><div class="hud-opts-list">`;
             data.options.forEach(o => {
-                let titleHtml = o.title ? `<div class="hud-btn-title">${o.title}</div>` : '';
                 const safeFull = encodeURIComponent(o.full);
-                html += `<div class="hud-btn" data-full-text="${safeFull}"><div class="hud-idx">${o.idx}</div><div class="hud-btn-content">${titleHtml}<div class="hud-btn-text">${o.text}</div></div></div>`;
+                let titleHtml = o.title ? `<div class="hud-btn-title-small">${o.title}</div>` : '';
+                html += `
+                    <div class="hud-btn-wrapper" data-full-text="${safeFull}">
+                        <div class="hud-btn-left">
+                            <div class="hud-idx">${o.idx}</div>
+                            ${titleHtml}
+                        </div>
+                        <div class="hud-btn-main">${o.text}</div>
+                        <div class="hud-send-quick" title="快速发送"><i class="fa-solid fa-paper-plane"></i></div>
+                    </div>
+                `;
             });
             html += `</div></div>`;
         }
@@ -761,7 +1307,7 @@
 
     // --- Settings & Menu ---
     function applySettingsToElement($el) {
-        $el.removeClass('hud-theme-luxury hud-theme-floral hud-theme-candy');
+        $el.removeClass('hud-theme-luxury hud-theme-floral hud-theme-candy hud-theme-sensual');
         $el.addClass(`hud-theme-${settings.theme}`);
         $el.css('--hud-scale', settings.scale);
         $el.css('font-family', settings.fontFamily || '');
@@ -776,23 +1322,27 @@
         }
         if ($(`#${menuItemId}`).length > 0) return;
 
-        const btn = $(`<div class="list-group-item flex-container flexGap5 interactable" id="${menuItemId}"><div class="fa-fw fa-solid fa-palette"></div><span>美化终端设置 v30.1</span></div>`);
+        const btn = $(`<div class="list-group-item flex-container flexGap5 interactable" id="${menuItemId}"><div class="fa-fw fa-solid fa-palette"></div><span>美化终端设置 v32.0</span></div>`);
         btn.on('click', () => {
             const html = `
             <div style="padding:15px; display:flex; flex-direction:column; gap:15px;">
-                <h3>终端样式设置 (v30.1) - 彩色数值条</h3>
-                <div><label>主题风格:</label><select id="hud-theme-select" class="text_pole" style="width:100%;margin-top:5px;"><option value="luxury" ${settings.theme==='luxury'?'selected':''}>商务奢华 (Dark Gold)</option><option value="floral" ${settings.theme==='floral'?'selected':''}>清新花艺 (Nature)</option><option value="candy" ${settings.theme==='candy'?'selected':''}>糖果波普 (Vibrant)</option></select></div>
+                <h3>终端样式设置 (v32.0) - 三风格奢华版</h3>
+                <div><label>主题风格:</label><select id="hud-theme-select" class="text_pole" style="width:100%;margin-top:5px;"><option value="luxury" ${settings.theme==='luxury'?'selected':''}>商务奢华 (Dark Gold)</option><option value="floral" ${settings.theme==='floral'?'selected':''}>清新花艺 (Nature)</option><option value="sensual" ${settings.theme==='sensual'?'selected':''}>暗夜情欲 (Dark Romance)</option></select></div>
                 <div><label>字体缩放 (${settings.scale}):</label><input type="range" id="hud-scale-range" min="0.8" max="1.3" step="0.05" value="${settings.scale}" style="width:100%"></div>
                 <div><label>自定义字体:</label><input type="text" id="hud-font-input" class="text_pole" placeholder="留空默认" value="${settings.fontFamily}" style="width:100%"></div>
                 <label class="checkbox_label"><input type="checkbox" id="hud-auto-send" ${settings.autoSend?'checked':''}> 点击选项自动发送</label>
                 <label class="checkbox_label"><input type="checkbox" id="hud-debug" ${settings.debug?'checked':''}> 启用调试信息 (Console)</label>
-                <button id="hud-force-refresh" class="menu_button">🔄 强制重绘全部 HUD</button>
-                <div style="padding:10px; background:#f5f5f5; border-radius:5px; font-size:0.9em;">
-                    <strong>💡 v30.1 更新:</strong><br>
-                    • 数值条移至人物卡片第一、二行<br>
-                    • 不同属性使用不同颜色区分<br>
-                    • 刷新按钮适配移动端（更大更易点击）<br>
-                    • 每个主题有独特的配色方案
+                <button id="hud-force-refresh" class="menu_button">🔄 重绘</button>
+                <div style="padding:12px; background:linear-gradient(135deg, #1a0a0e, #2d1419); border-radius:8px; font-size:0.9em; border-left:4px solid #d4a574; color:#f4d2d9;">
+                    <strong>🌹 v32.0 奢华三主题:</strong><br>
+                    • <strong>修正M/S识别</strong>：根据键名智能判断<br>
+                    • <strong>数值条升级</strong>：32px高度+超强发光脉冲<br>
+                    • <strong>属性间距</strong>：10px精确间距<br>
+                    • <strong>Luxury</strong>：深邃金融仪表盘+玻璃态<br>
+                    • <strong>Floral</strong>：清新iOS风格+花卉装饰<br>
+                    • <strong>Sensual</strong>：酒红紫罗兰+天鹅绒质感<br>
+                    • <strong>交互动画</strong>：流畅缓动+多层阴影<br>
+                    • 移动端完美触控适配
                 </div>
             </div>`;
             SillyTavern.callGenericPopup(html, 1, '', {wide:false});
