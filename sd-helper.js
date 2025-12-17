@@ -1,8 +1,7 @@
 // ==UserScript==
-// @name         生图助手 (Fix v28 - Event Based)
-// @namespace    http://tampermonkey.net/
-// @version      28
-// @description  改用酒馆事件监听，移除DOM Observer，防抖500ms，5次间隔2s持续监听
+// @name         生图助手 (Fix v29 - Direct Call)
+// @version      29
+// @description  移除模拟点击，改为直接调用handleGeneration()函数，提升稳定性
 // @author       Walkeatround & Gemini & AI Assistant
 // @match        */*
 // @grant        none
@@ -10,10 +9,10 @@
 
 (function () {
     'use strict';
-    console.log('[SD Helper v28] Script loaded (Event-Based with Persistent Listening).');
+    console.log('[SD Helper v29] Script loaded (Direct Function Call).');
 
-    const SCRIPT_ID = 'sd_gen_standard_v28';
-    const STORAGE_KEY = 'sd_gen_settings_v28';
+    const SCRIPT_ID = 'sd_gen_standard_v29';
+    const STORAGE_KEY = 'sd_gen_settings_v29';
     const NO_GEN_FLAG = '<!--no-gen-->';
     
     const RUNTIME_LOGS = [];
@@ -229,8 +228,8 @@
     }, 500);
 
     function injectGlobalStyles() {
-        if ($('#sd-global-css-v28').length) return;
-        $('<style id="sd-global-css-v28">').text(GLOBAL_CSS).appendTo('head');
+        if ($('#sd-global-css-v29').length) return;
+        $('<style id="sd-global-css-v29">').text(GLOBAL_CSS).appendTo('head');
         console.log('[SD] Global CSS injected.');
     }
 
@@ -254,8 +253,7 @@
     function initScript() {
         addMenuItem();
         initGlobalListeners();
-        registerSTEvents(); // ✅ 改用事件监听
-        // ❌ 移除了 startDomObserver()
+        registerSTEvents();
         setTimeout(processChatDOM, 1000);
     }
 
@@ -460,9 +458,6 @@
         }
     }
 
-    // --- ✅ 改用事件监听，移除DOM Observer ---
-    // ❌ 移除了 startDomObserver() 函数
-
     // ✅ 新增：带持续监听的处理函数（5次间隔2s）
     function processChatDOMWithPersistentListening() {
         addLog('EVENT', `[监听触发] 开始处理聊天DOM (第 ${persistentListenCount + 1} 次)`);
@@ -480,6 +475,28 @@
             persistentListenCount = 0;
             addLog('EVENT', '[监听结束] 完成5次持续监听');
         }
+    }
+
+    // ✅ 辅助函数：从 $wrap 构造 state 对象
+    function buildStateFromWrap($wrap) {
+        const $mes = $wrap.closest('.mes');
+        const mesId = $mes.attr('mesid');
+        if (!mesId) return null;
+
+        return {
+            $wrap,
+            mesId,
+            prompt: decodeURIComponent($wrap.attr('data-prompt')),
+            images: JSON.parse(decodeURIComponent($wrap.attr('data-images'))),
+            preventAuto: $wrap.attr('data-prevent-auto') === 'true',
+            blockIdx: parseInt($wrap.attr('data-block-idx')),
+            el: {
+                img: $wrap.find('.sd-ui-image'),
+                msg: $wrap.find('.sd-ui-msg'),
+                viewport: $wrap.find('.sd-ui-viewport'),
+                toggle: $wrap.find('.sd-ui-toggle')
+            }
+        };
     }
 
     function processChatDOM() {
@@ -535,13 +552,20 @@
                             setTimeout(() => {
                                 $child.find('.sd-ui-msg.show').removeClass('show');
                                 
+                                // ✅ 改为直接调用 handleGeneration，不再模拟点击
                                 $child.find('.sd-ui-wrap').each(function() {
                                     const $w = $(this);
                                     const prevent = $w.attr('data-prevent-auto') === 'true';
                                     const imgs = JSON.parse(decodeURIComponent($w.attr('data-images')));
                                     if (imgs.length === 0 && !prevent) {
                                         const delay = 500 + (parseInt($w.attr('data-block-idx')) * 1000);
-                                        setTimeout(() => $w.find('.sd-zone.right').trigger('click'), delay);
+                                        setTimeout(() => {
+                                            const state = buildStateFromWrap($w);
+                                            if (state) {
+                                                addLog('AUTO_GEN', `Block ${state.blockIdx}: 直接调用生成函数`);
+                                                handleGeneration(state);
+                                            }
+                                        }, delay);
                                     }
                                 });
                             }, 100);
@@ -575,12 +599,20 @@
                 
                 setTimeout(() => $el.find('.sd-ui-msg.show').removeClass('show'), 2000);
                 
+                // ✅ 改为直接调用 handleGeneration，不再模拟点击
                 $el.find('.sd-ui-wrap').each(function() {
                     const $w = $(this);
                     const prevent = $w.attr('data-prevent-auto') === 'true';
                     const imgs = JSON.parse(decodeURIComponent($w.attr('data-images')));
                     if (imgs.length === 0 && !prevent) {
-                         setTimeout(() => $w.find('.sd-zone.right').trigger('click'), 500 + (blockIdx * 1000));
+                        const delay = 500 + (blockIdx * 1000);
+                        setTimeout(() => {
+                            const state = buildStateFromWrap($w);
+                            if (state) {
+                                addLog('AUTO_GEN', `Block ${state.blockIdx}: 直接调用生成函数`);
+                                handleGeneration(state);
+                            }
+                        }, delay);
                     }
                 });
             }
@@ -756,7 +788,7 @@
 
         const popupHtml = `
             <div style="padding: 10px; max-height: 70vh; overflow-y: auto; overflow-x: hidden; scrollbar-width: thin;">
-                <h3 style="margin-bottom: 15px;">🎨 SD生图助手 v28 (事件监听版)</h3>
+                <h3 style="margin-bottom: 15px;">🎨 SD生图助手 v29 (直接调用版)</h3>
                 <div class="sd-tab-nav">
                     <div id="${tabInjId}" class="sd-tab-btn active">注入(Prompt)</div>
                     <div id="${tabCfgId}" class="sd-tab-btn">基础设置</div>
@@ -961,7 +993,6 @@
         addLog('INJECT', `Inserted prompt at index ${targetIdx}`);
     }
 
-    // ✅ 改用事件监听，移除DOM Observer
     function registerSTEvents() {
         if (!SillyTavern.eventSource) {
             addLog('ERROR', 'SillyTavern.eventSource 不可用');
@@ -976,19 +1007,16 @@
             addLog('ERROR', `注册 chat_completion_prompt_ready 失败: ${e.message}`);
         }
 
-        // ✅ 改用防抖函数 (500ms)
         const debouncedProcess = () => {
             clearTimeout(debounceTimer);
             debounceTimer = setTimeout(() => {
-                persistentListenCount = 0; // 重置计数器
+                persistentListenCount = 0;
                 processChatDOMWithPersistentListening();
-            }, 500); // ✅ 500ms 防抖
+            }, 500);
         };
 
-        // ✅ 监听酒馆事件（基于教程文档核对）
         const eventTypes = SillyTavern.eventTypes || {};
         
-        // 用户消息渲染完成
         if (eventTypes.USER_MESSAGE_RENDERED || 'user_message_rendered') {
             const eventName = eventTypes.USER_MESSAGE_RENDERED || 'user_message_rendered';
             SillyTavern.eventSource.on(eventName, (messageId) => {
@@ -998,7 +1026,6 @@
             addLog('EVENT', `✅ 已注册事件: ${eventName}`);
         }
 
-        // 角色消息渲染完成
         if (eventTypes.CHARACTER_MESSAGE_RENDERED || 'character_message_rendered') {
             const eventName = eventTypes.CHARACTER_MESSAGE_RENDERED || 'character_message_rendered';
             SillyTavern.eventSource.on(eventName, (messageId) => {
@@ -1008,7 +1035,6 @@
             addLog('EVENT', `✅ 已注册事件: ${eventName}`);
         }
 
-        // 聊天切换
         if (eventTypes.CHAT_CHANGED || 'chat_changed') {
             const eventName = eventTypes.CHAT_CHANGED || 'chat_changed';
             SillyTavern.eventSource.on(eventName, (chatFilename) => {
@@ -1018,7 +1044,6 @@
             addLog('EVENT', `✅ 已注册事件: ${eventName}`);
         }
 
-        // 消息更新
         if (eventTypes.MESSAGE_UPDATED || 'message_updated') {
             const eventName = eventTypes.MESSAGE_UPDATED || 'message_updated';
             SillyTavern.eventSource.on(eventName, (messageId) => {
@@ -1028,7 +1053,6 @@
             addLog('EVENT', `✅ 已注册事件: ${eventName}`);
         }
 
-        // 消息滑动
         if (eventTypes.MESSAGE_SWIPED || 'message_swiped') {
             const eventName = eventTypes.MESSAGE_SWIPED || 'message_swiped';
             SillyTavern.eventSource.on(eventName, (messageId) => {
@@ -1038,7 +1062,6 @@
             addLog('EVENT', `✅ 已注册事件: ${eventName}`);
         }
 
-        // 生成结束
         if (eventTypes.GENERATION_ENDED || 'generation_ended') {
             const eventName = eventTypes.GENERATION_ENDED || 'generation_ended';
             SillyTavern.eventSource.on(eventName, (messageId) => {
@@ -1048,7 +1071,6 @@
             addLog('EVENT', `✅ 已注册事件: ${eventName}`);
         }
 
-        // 消息接收
         if (eventTypes.MESSAGE_RECEIVED || 'message_received') {
             const eventName = eventTypes.MESSAGE_RECEIVED || 'message_received';
             SillyTavern.eventSource.on(eventName, (messageId) => {
