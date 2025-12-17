@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         生图助手 (Fix v30 - Direct Call)
-// @version      30
+// @version      30.0
 // @description  移除模拟点击，改为直接调用handleGeneration()函数，提升稳定性
 // @author       Walkeatround & Gemini & AI Assistant
 // @match        */*
