@@ -320,6 +320,7 @@
                 curIdx++;
                 updateWrapperView(s.$wrap, s.images, curIdx);
             } else {
+                addLog('CLICK_GEN', `Block ${s.blockIdx}: 用户手动点击右侧区域触发生图`);
                 handleGeneration(s);
             }
         });
@@ -355,14 +356,23 @@
 
     // --- Action Logic ---
     async function handleGeneration(state) {
-        if (state.$wrap.data('generating')) return;
+        addLog('GEN_START', `Block ${state.blockIdx}: 开始生图流程 - Prompt前缀: "${state.prompt.substring(0, 50)}..."`);
+        
+        if (state.$wrap.data('generating')) {
+            addLog('GEN_SKIP', `Block ${state.blockIdx}: 已有生图任务进行中，跳过`);
+            return;
+        }
         state.$wrap.data('generating', true);
+        addLog('GEN_LOCK', `Block ${state.blockIdx}: 已设置生成锁，防止重复触发`);
         
         const p = state.prompt;
         const prefix = settings.globalPrefix ? settings.globalPrefix + ', ' : '';
         const suffix = settings.globalSuffix ? ', ' + settings.globalSuffix : '';
         let finalPrompt = (prefix + p + suffix).replace(/,\s*,/g, ',').trim();
+        addLog('GEN_PROMPT', `Block ${state.blockIdx}: 最终Prompt长度=${finalPrompt.length}, 负面词=${settings.globalNegative ? '已设置' : '未设置'}`);
+        
         let cmd = `/sd quiet=true ${settings.globalNegative ? `negative="${escapeArg(settings.globalNegative)}"` : ''} ${finalPrompt}`;
+        addLog('GEN_CMD', `Block ${state.blockIdx}: 命令已构造 - 长度=${cmd.length}`);
         
         const showMsg = (txt) => {
             state.el.msg.text(txt).addClass('show');
@@ -370,31 +380,38 @@
         };
 
         showMsg('⏳ 请求中...');
-        addLog('GEN', `Block ${state.blockIdx}: Prompting...`);
+        addLog('GEN_UI', `Block ${state.blockIdx}: UI状态更新 - 显示"请求中"`);
         state.el.img.css('opacity', '0.5');
 
         try {
+            addLog('GEN_API', `Block ${state.blockIdx}: 正在调用 triggerSlash API...`);
             const result = await triggerSlash(cmd);
+            addLog('GEN_RESULT', `Block ${state.blockIdx}: API返回结果长度=${result ? result.length : 0}`);
+            
             const newUrls = (result || '').match(/(https?:\/\/|\/|output\/)[^\s"']+\.(png|jpg|jpeg|webp|gif)/gi) || [];
+            addLog('GEN_PARSE', `Block ${state.blockIdx}: 解析到 ${newUrls.length} 个图片URL`);
             
             if (newUrls.length > 0) {
-                addLog('SUCCESS', `Block ${state.blockIdx}: Got images`);
+                addLog('SUCCESS', `Block ${state.blockIdx}: 成功生成图片 - URLs: ${newUrls.join(', ')}`);
                 showMsg('✅ 成功');
                 newUrls.forEach(u => state.images.push(u));
                 const uniqueImages = [...new Set(state.images)];
+                addLog('GEN_SAVE', `Block ${state.blockIdx}: 图片数组更新 - 去重后共 ${uniqueImages.length} 张`);
                 
                 await updateChatData(state.mesId, state.blockIdx, state.prompt, uniqueImages, false);
                 updateWrapperView(state.$wrap, uniqueImages, uniqueImages.length - 1);
+                addLog('GEN_COMPLETE', `Block ${state.blockIdx}: 生图流程完成，UI已更新`);
             } else {
-                addLog('WARN', 'No images found');
+                addLog('WARN', `Block ${state.blockIdx}: API响应中未找到图片URL`);
                 showMsg('⚠️ 无结果');
             }
         } catch (err) {
-            addLog('ERROR', err.message);
+            addLog('ERROR', `Block ${state.blockIdx}: 生图失败 - ${err.message}`);
             showMsg('❌ 错误');
         } finally {
             state.$wrap.data('generating', false);
             state.el.img.css('opacity', '1');
+            addLog('GEN_UNLOCK', `Block ${state.blockIdx}: 已解除生成锁`);
         }
     }
 
@@ -481,15 +498,24 @@
     function buildStateFromWrap($wrap) {
         const $mes = $wrap.closest('.mes');
         const mesId = $mes.attr('mesid');
-        if (!mesId) return null;
+        if (!mesId) {
+            addLog('ERROR', 'buildStateFromWrap: 无法获取 mesId，跳过');
+            return null;
+        }
+
+        const blockIdx = parseInt($wrap.attr('data-block-idx'));
+        const imgCount = JSON.parse(decodeURIComponent($wrap.attr('data-images'))).length;
+        const prevent = $wrap.attr('data-prevent-auto') === 'true';
+        
+        addLog('STATE_BUILD', `Block ${blockIdx}: 构造 state 对象 - mesId=${mesId}, 图片数=${imgCount}, preventAuto=${prevent}`);
 
         return {
             $wrap,
             mesId,
             prompt: decodeURIComponent($wrap.attr('data-prompt')),
             images: JSON.parse(decodeURIComponent($wrap.attr('data-images'))),
-            preventAuto: $wrap.attr('data-prevent-auto') === 'true',
-            blockIdx: parseInt($wrap.attr('data-block-idx')),
+            preventAuto: prevent,
+            blockIdx: blockIdx,
             el: {
                 img: $wrap.find('.sd-ui-image'),
                 msg: $wrap.find('.sd-ui-msg'),
@@ -557,15 +583,31 @@
                                     const $w = $(this);
                                     const prevent = $w.attr('data-prevent-auto') === 'true';
                                     const imgs = JSON.parse(decodeURIComponent($w.attr('data-images')));
+                                    const currentBlockIdx = parseInt($w.attr('data-block-idx'));
+                                    
+                                    addLog('AUTO_CHECK', `Block ${currentBlockIdx}: 检查自动生图条件 - 图片数=${imgs.length}, preventAuto=${prevent}`);
+                                    
                                     if (imgs.length === 0 && !prevent) {
-                                        const delay = 500 + (parseInt($w.attr('data-block-idx')) * 1000);
+                                        const delay = 500 + (currentBlockIdx * 1000);
+                                        addLog('AUTO_SCHEDULE', `Block ${currentBlockIdx}: 满足自动生图条件，将在 ${delay}ms 后触发`);
+                                        
                                         setTimeout(() => {
+                                            addLog('AUTO_TRIGGER', `Block ${currentBlockIdx}: 延迟时间到，开始构造 state 并调用生图函数`);
                                             const state = buildStateFromWrap($w);
                                             if (state) {
-                                                addLog('AUTO_GEN', `Block ${state.blockIdx}: 直接调用生成函数`);
+                                                addLog('AUTO_GEN', `Block ${state.blockIdx}: 直接调用 handleGeneration()`);
                                                 handleGeneration(state);
+                                            } else {
+                                                addLog('AUTO_FAIL', `Block ${currentBlockIdx}: state 构造失败，无法触发自动生图`);
                                             }
                                         }, delay);
+                                    } else {
+                                        if (imgs.length > 0) {
+                                            addLog('AUTO_SKIP', `Block ${currentBlockIdx}: 已有 ${imgs.length} 张图片，跳过自动生图`);
+                                        }
+                                        if (prevent) {
+                                            addLog('AUTO_SKIP', `Block ${currentBlockIdx}: preventAuto=true，跳过自动生图`);
+                                        }
                                     }
                                 });
                             }, 100);
@@ -604,15 +646,31 @@
                     const $w = $(this);
                     const prevent = $w.attr('data-prevent-auto') === 'true';
                     const imgs = JSON.parse(decodeURIComponent($w.attr('data-images')));
+                    const currentBlockIdx = parseInt($w.attr('data-block-idx'));
+                    
+                    addLog('AUTO_CHECK', `Block ${currentBlockIdx}: 检查自动生图条件 - 图片数=${imgs.length}, preventAuto=${prevent}`);
+                    
                     if (imgs.length === 0 && !prevent) {
                         const delay = 500 + (blockIdx * 1000);
+                        addLog('AUTO_SCHEDULE', `Block ${currentBlockIdx}: 满足自动生图条件，将在 ${delay}ms 后触发`);
+                        
                         setTimeout(() => {
+                            addLog('AUTO_TRIGGER', `Block ${currentBlockIdx}: 延迟时间到，开始构造 state 并调用生图函数`);
                             const state = buildStateFromWrap($w);
                             if (state) {
-                                addLog('AUTO_GEN', `Block ${state.blockIdx}: 直接调用生成函数`);
+                                addLog('AUTO_GEN', `Block ${state.blockIdx}: 直接调用 handleGeneration()`);
                                 handleGeneration(state);
+                            } else {
+                                addLog('AUTO_FAIL', `Block ${currentBlockIdx}: state 构造失败，无法触发自动生图`);
                             }
                         }, delay);
+                    } else {
+                        if (imgs.length > 0) {
+                            addLog('AUTO_SKIP', `Block ${currentBlockIdx}: 已有 ${imgs.length} 张图片，跳过自动生图`);
+                        }
+                        if (prevent) {
+                            addLog('AUTO_SKIP', `Block ${currentBlockIdx}: preventAuto=true，跳过自动生图`);
+                        }
                     }
                 });
             }
@@ -758,6 +816,7 @@
                 closeCurrentPopup(this);
                 await updateChatData(state.mesId, state.blockIdx, state.prompt, state.images, state.preventAuto);
                 state.prompt = $promptArea.val().trim();
+                addLog('POPUP_GEN', `Block ${state.blockIdx}: 用户通过编辑弹窗触发生图`);
                 handleGeneration(state);
             });
         }, 100);
