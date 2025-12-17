@@ -3,7 +3,7 @@
 
 // 提取函数（复用代码）
 function extractStatbars(content) {
-  const regex = /\[statbar\](.*?)\[\/statbar\]/gs;
+  const regex = /\[statbar\]([\s\S]*?)\[\/statbar\]/gs;
   const matches = [...content.matchAll(regex)];
   return matches.map(match => match[1].trim());
 }
