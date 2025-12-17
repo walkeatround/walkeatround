@@ -1,6 +1,6 @@
 // ==UserScript==
-// @name         生图助手 (Fix v29 - Direct Call)
-// @version      29
+// @name         生图助手 (Fix v30 - Direct Call)
+// @version      30
 // @description  移除模拟点击，改为直接调用handleGeneration()函数，提升稳定性
 // @author       Walkeatround & Gemini & AI Assistant
 // @match        */*
@@ -9,10 +9,10 @@
 
 (function () {
     'use strict';
-    console.log('[SD Helper v29] Script loaded (Direct Function Call).');
+    console.log('[SD Helper v30] Script loaded (Direct Function Call).');
 
-    const SCRIPT_ID = 'sd_gen_standard_v29';
-    const STORAGE_KEY = 'sd_gen_settings_v29';
+    const SCRIPT_ID = 'sd_gen_standard_v30';
+    const STORAGE_KEY = 'sd_gen_settings_v30';
     const NO_GEN_FLAG = '<!--no-gen-->';
     
     const RUNTIME_LOGS = [];
@@ -228,8 +228,8 @@
     }, 500);
 
     function injectGlobalStyles() {
-        if ($('#sd-global-css-v29').length) return;
-        $('<style id="sd-global-css-v29">').text(GLOBAL_CSS).appendTo('head');
+        if ($('#sd-global-css-v30').length) return;
+        $('<style id="sd-global-css-v30">').text(GLOBAL_CSS).appendTo('head');
         console.log('[SD] Global CSS injected.');
     }
 
@@ -847,7 +847,7 @@
 
         const popupHtml = `
             <div style="padding: 10px; max-height: 70vh; overflow-y: auto; overflow-x: hidden; scrollbar-width: thin;">
-                <h3 style="margin-bottom: 15px;">🎨 SD生图助手 v29 (直接调用版)</h3>
+                <h3 style="margin-bottom: 15px;">🎨 SD生图助手 v30</h3>
                 <div class="sd-tab-nav">
                     <div id="${tabInjId}" class="sd-tab-btn active">注入(Prompt)</div>
                     <div id="${tabCfgId}" class="sd-tab-btn">基础设置</div>
