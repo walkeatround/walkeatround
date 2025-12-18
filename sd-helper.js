@@ -1,6 +1,6 @@
 // ==UserScript==
-// @name         生图助手 (Fix v34 - Direct Call)
-// @version      v34
+// @name         生图助手 (Fix v35 - Direct Call)
+// @version      v35
 // @description  移除模拟点击，改为直接调用handleGeneration()函数，提升稳定性
 // @author       Walkeatround & Gemini & AI Assistant
 // @match        */*
@@ -9,9 +9,9 @@
 
 (function () {
     'use strict';
-    console.log('[SD Helper v34] Script loaded (Direct Function Call).');
+    console.log('[SD Helper v35] Script loaded (Direct Function Call).');
 
-    const SCRIPT_ID = 'sd_gen_standard_v34';
+    const SCRIPT_ID = 'sd_gen_standard_v35';
     const STORAGE_KEY = 'sd_gen_settings';
     const NO_GEN_FLAG = '<!--no-gen-->';
     
@@ -48,8 +48,6 @@
 
     let settings = DEFAULT_SETTINGS;
     let debounceTimer = null;
-    let persistentListenCount = 0;
-
     // --- CSS ---
     const GLOBAL_CSS = `
     .sd-ui-container * { box-sizing: border-box; user-select: none; }
@@ -228,8 +226,8 @@
     }, 500);
 
     function injectGlobalStyles() {
-        if ($('#sd-global-css-v34').length) return;
-        $('<style id="sd-global-css-v34">').text(GLOBAL_CSS).appendTo('head');
+        if ($('#sd-global-css-v35').length) return;
+        $('<style id="sd-global-css-v35">').text(GLOBAL_CSS).appendTo('head');
         console.log('[SD] Global CSS injected.');
     }
 
@@ -481,25 +479,6 @@
         }
     }
 
-    // ✅ 新增：带持续监听的处理函数（5次间隔2s）
-    function processChatDOMWithPersistentListening() {
-        addLog('EVENT', `[监听触发] 开始处理聊天DOM (第 ${persistentListenCount + 1} 次)`);
-        processChatDOM();
-        
-        // 持续监听5次，每次间隔2秒
-        if (persistentListenCount < 4) {
-            persistentListenCount++;
-            setTimeout(() => {
-                addLog('EVENT', `[持续监听] 第 ${persistentListenCount + 1} 次延迟处理`);
-                processChatDOM();
-                processChatDOMWithPersistentListening();
-            }, 2000);
-        } else {
-            persistentListenCount = 0;
-            addLog('EVENT', '[监听结束] 完成5次持续监听');
-        }
-    }
-
     // ✅ 辅助函数：从 $wrap 构造 state 对象
     function buildStateFromWrap($wrap) {
         const $mes = $wrap.closest('.mes');
@@ -541,6 +520,27 @@
 
         $('.mes_text').each(function() {
             const $el = $(this);
+
+                    // ✅ 方案三：先检测并修复已有的不一致UI
+        $el.find('.sd-ui-wrap').each(function() {
+            const $w = $(this);
+            const imgs = JSON.parse(decodeURIComponent($w.attr('data-images')));
+            const $placeholder = $w.find('.sd-placeholder');
+            const $img = $w.find('.sd-ui-image');
+            
+            // 如果有图片但还显示占位符 = 状态不一致
+            if (imgs.length > 0 && $placeholder.is(':visible')) {
+                const blockIdx = $w.attr('data-block-idx');
+                addLog('FIX_UI', `Block ${blockIdx}: 检测到UI不一致(有图但显示占位符)，自动修复`);
+                updateWrapperView($w, imgs, imgs.length - 1);
+            }
+            // 或者有图片但img元素没有src
+            else if (imgs.length > 0 && !$img.attr('src')) {
+                const blockIdx = $w.attr('data-block-idx');
+                addLog('FIX_UI', `Block ${blockIdx}: 检测到UI不一致(有图但img无src)，自动修复`);
+                updateWrapperView($w, imgs, imgs.length - 1);
+            }
+        });
           
             let blockIdx = 0;
             
@@ -599,6 +599,16 @@
                                         
                                         setTimeout(() => {
                                             addLog('AUTO_TRIGGER', `Block ${currentBlockIdx}: 延迟时间到，开始构造 state 并调用生图函数`);
+                                            if ($w.data('generating')) {
+                                            addLog('AUTO_SKIP', `Block ${currentBlockIdx}: 已在生成中，跳过重复触发`);
+                                            return;
+                                            }
+    
+                                            const currentImgs = JSON.parse(decodeURIComponent($w.attr('data-images')));
+                                            if (currentImgs.length > 0) {
+                                            addLog('AUTO_SKIP', `Block ${currentBlockIdx}: 延迟期间已生成图片，跳过`);
+                                            return;
+                                            }
                                             const state = buildStateFromWrap($w);
                                             if (state) {
                                                 addLog('AUTO_GEN', `Block ${state.blockIdx}: 直接调用 handleGeneration()`);
@@ -662,6 +672,16 @@
                         
                         setTimeout(() => {
                             addLog('AUTO_TRIGGER', `Block ${currentBlockIdx}: 延迟时间到，开始构造 state 并调用生图函数`);
+                                if ($w.data('generating')) {
+        addLog('AUTO_SKIP', `Block ${currentBlockIdx}: 已在生成中，跳过重复触发`);
+        return;
+    }
+    
+    const currentImgs = JSON.parse(decodeURIComponent($w.attr('data-images')));
+    if (currentImgs.length > 0) {
+        addLog('AUTO_SKIP', `Block ${currentBlockIdx}: 延迟期间已生成图片，跳过`);
+        return;
+    }
                             const state = buildStateFromWrap($w);
                             if (state) {
                                 addLog('AUTO_GEN', `Block ${state.blockIdx}: 直接调用 handleGeneration()`);
@@ -853,7 +873,7 @@
 
         const popupHtml = `
             <div style="padding: 10px; max-height: 70vh; overflow-y: auto; overflow-x: hidden; scrollbar-width: thin;">
-                <h3 style="margin-bottom: 15px;">🎨 SD生图助手 v34</h3>
+                <h3 style="margin-bottom: 15px;">🎨 SD生图助手 v35</h3>
                 <div class="sd-tab-nav">
                     <div id="${tabInjId}" class="sd-tab-btn active">注入(Prompt)</div>
                     <div id="${tabCfgId}" class="sd-tab-btn">基础设置</div>
@@ -1076,7 +1096,6 @@
             clearTimeout(debounceTimer);
             debounceTimer = setTimeout(() => {
                 persistentListenCount = 0;
-                processChatDOMWithPersistentListening();
             }, 500);
         };
 
