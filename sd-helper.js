@@ -14,6 +14,7 @@
     const SCRIPT_ID = 'sd_gen_standard_v35';
     const STORAGE_KEY = 'sd_gen_settings';
     const NO_GEN_FLAG = '<!--no-gen-->';
+    const SCHEDULED_FLAG = '<!--scheduled-->'; // ✅ 新增：已调度标记
     
     const RUNTIME_LOGS = [];
     function addLog(type, msg) {
@@ -48,6 +49,8 @@
 
     let settings = DEFAULT_SETTINGS;
     let debounceTimer = null;
+    let persistentListenCount = 0;
+
     // --- CSS ---
     const GLOBAL_CSS = `
     .sd-ui-container * { box-sizing: border-box; user-select: none; }
@@ -340,7 +343,7 @@
             s.images.splice(curIdx, 1);
             if (s.images.length === 0) s.preventAuto = true;
             
-            await updateChatData(s.mesId, s.blockIdx, s.prompt, s.images, s.preventAuto);
+            await updateChatData(s.mesId, s.blockIdx, s.prompt, s.images, s.preventAuto, false);
             updateWrapperView(s.$wrap, s.images, Math.max(0, s.images.length - 1));
         });
 
@@ -356,10 +359,12 @@
     async function handleGeneration(state) {
         addLog('GEN_START', `Block ${state.blockIdx}: 开始生图流程 - Prompt前缀: "${state.prompt.substring(0, 50)}..."`);
         
+        // ✅ 只用jQuery data防止并发
         if (state.$wrap.data('generating')) {
-            addLog('GEN_SKIP', `Block ${state.blockIdx}: 已有生图任务进行中，跳过`);
+            addLog('GEN_SKIP', `Block ${state.blockIdx}: 正在生成中，跳过`);
             return;
         }
+        
         state.$wrap.data('generating', true);
         addLog('GEN_LOCK', `Block ${state.blockIdx}: 已设置生成锁，防止重复触发`);
         
@@ -395,17 +400,27 @@
                 newUrls.forEach(u => state.images.push(u));
                 const uniqueImages = [...new Set(state.images)];
                 addLog('GEN_SAVE', `Block ${state.blockIdx}: 图片数组更新 - 去重后共 ${uniqueImages.length} 张`);
-                    // ✅ 方案一：先更新UI（立即显示）
-                addLog('GEN_UI_FIRST', `Block ${state.blockIdx}: 优先更新UI显示图片`);
-                updateWrapperView(state.$wrap, uniqueImages, uniqueImages.length - 1);
-                await updateChatData(state.mesId, state.blockIdx, state.prompt, uniqueImages, false);
-                // 保存后再次确认UI（防止被ST重渲染覆盖）
-                setTimeout(() => {
-                addLog('GEN_UI_CONFIRM', `Block ${state.blockIdx}: 二次确认UI状态`);
-                updateWrapperView(state.$wrap, uniqueImages, uniqueImages.length - 1);
-                }, 100);                
+    // ✅ 先写入聊天记录（这会触发HTML刷新）
+    await updateChatData(state.mesId, state.blockIdx, state.prompt, uniqueImages, false, false);
+    addLog('GEN_DATA_SAVED', `Block ${state.blockIdx}: 数据已写入聊天记录`);
+    
+    // ✅ 延迟后重新查找DOM并更新UI
+    setTimeout(() => {
+        addLog('GEN_UI_REFRESH', `Block ${state.blockIdx}: 重新查找DOM并更新UI`);
+        
+        // 重新查找对应的UI元素
+        const $mes = $(`.mes[mesid="${state.mesId}"]`);
+        const $newWrap = $mes.find(`.sd-ui-wrap[data-block-idx="${state.blockIdx}"]`);
+        
+        if ($newWrap.length > 0) {
+            addLog('GEN_UI_FOUND', `Block ${state.blockIdx}: 找到新的DOM元素，开始更新`);
+            updateWrapperView($newWrap, uniqueImages, uniqueImages.length - 1);
+        } else {
+            addLog('GEN_UI_FAIL', `Block ${state.blockIdx}: 未找到对应的DOM元素`);
+        }
+    }, 200);  // 延迟增加到200ms确保ST渲染完成           
                 addLog('GEN_COMPLETE', `Block ${state.blockIdx}: 生图流程完成，UI已更新`);
-                } else {
+            } else {
                 addLog('WARN', `Block ${state.blockIdx}: API响应中未找到图片URL`);
                 showMsg('⚠️ 无结果');
             }
@@ -453,12 +468,13 @@
         }
     }
 
-    async function updateChatData(mesId, blockIndex, prompt, images, preventAuto) {
+    // ✅ 修改：增加isScheduled参数
+    async function updateChatData(mesId, blockIndex, prompt, images, preventAuto, isScheduled) {
         const index = parseInt(mesId);
         const chat = SillyTavern.chat;
         if (!chat || !chat[index]) return;
 
-        const innerContent = rebuildBlockString(prompt, images, preventAuto);
+        const innerContent = rebuildBlockString(prompt, images, preventAuto, isScheduled);
         const newBlock = settings.startTag + '\n' + innerContent + '\n' + settings.endTag;
 
         const sTag = escapeRegExp(settings.startTag);
@@ -475,7 +491,7 @@
             const newContent = content.substring(0, startIndex) + newBlock + content.substring(endIndex);
             
             await safeUpdateChat(index, newContent);
-            addLog('SAVE', `Saved block index ${blockIndex} to message ${index}`);
+            addLog('SAVE', `Saved block index ${blockIndex} to message ${index}${isScheduled ? ' (marked as scheduled)' : ''}`);
         }
     }
 
@@ -511,8 +527,10 @@
     }
 
     function processChatDOM() {
-        if (!settings.enabled) return;
-
+        if (!settings.enabled) { 
+            addLog('DOM_SKIP', 'settings.enabled = false，跳过处理');
+            return;
+        }
         const sTag = settings.startTag;
         const eTag = settings.endTag;
         const pattern = `${escapeRegExp(sTag)}([\\s\\S]*?)${escapeRegExp(eTag)}`;
@@ -520,28 +538,26 @@
 
         $('.mes_text').each(function() {
             const $el = $(this);
-
-                    // ✅ 方案三：先检测并修复已有的不一致UI
-        $el.find('.sd-ui-wrap').each(function() {
-            const $w = $(this);
-            const imgs = JSON.parse(decodeURIComponent($w.attr('data-images')));
-            const $placeholder = $w.find('.sd-placeholder');
-            const $img = $w.find('.sd-ui-image');
-            
-            // 如果有图片但还显示占位符 = 状态不一致
-            if (imgs.length > 0 && $placeholder.is(':visible')) {
-                const blockIdx = $w.attr('data-block-idx');
-                addLog('FIX_UI', `Block ${blockIdx}: 检测到UI不一致(有图但显示占位符)，自动修复`);
-                updateWrapperView($w, imgs, imgs.length - 1);
-            }
-            // 或者有图片但img元素没有src
-            else if (imgs.length > 0 && !$img.attr('src')) {
-                const blockIdx = $w.attr('data-block-idx');
-                addLog('FIX_UI', `Block ${blockIdx}: 检测到UI不一致(有图但img无src)，自动修复`);
-                updateWrapperView($w, imgs, imgs.length - 1);
-            }
-        });
-          
+          // ✅ 方案三：先检测并修复已有的不一致UI
+            $el.find('.sd-ui-wrap').each(function() {
+                const $w = $(this);
+                const imgs = JSON.parse(decodeURIComponent($w.attr('data-images')));
+                const $placeholder = $w.find('.sd-placeholder');
+                const $img = $w.find('.sd-ui-image');
+                
+                // 如果有图片但还显示占位符 = 状态不一致
+                if (imgs.length > 0 && $placeholder.is(':visible')) {
+                    const blockIdx = $w.attr('data-block-idx');
+                    addLog('FIX_UI', `Block ${blockIdx}: 检测到UI不一致(有图但显示占位符)，自动修复`);
+                    updateWrapperView($w, imgs, imgs.length - 1);
+                }
+                // 或者有图片但img元素没有src
+                else if (imgs.length > 0 && !$img.attr('src')) {
+                    const blockIdx = $w.attr('data-block-idx');
+                    addLog('FIX_UI', `Block ${blockIdx}: 检测到UI不一致(有图但img无src)，自动修复`);
+                    updateWrapperView($w, imgs, imgs.length - 1);
+                }
+            });
             let blockIdx = 0;
             
             const hasTHRender = $el.find('.TH-render').length > 0;
@@ -560,6 +576,8 @@
                     }
                     
                     if ($child.find('.sd-ui-wrap').length > 0) {
+                        console.log('[SD] 子元素已包含sd-ui-wrap，跳过处理');
+                        blockIdx++;
                         return;
                     }
                     
@@ -584,39 +602,69 @@
                             setTimeout(() => {
                                 $child.find('.sd-ui-msg.show').removeClass('show');
                                 
-                                // ✅ 改为直接调用 handleGeneration，不再模拟点击
+                                // ✅ 使用文本标记检查
                                 $child.find('.sd-ui-wrap').each(function() {
                                     const $w = $(this);
+                                    
                                     const prevent = $w.attr('data-prevent-auto') === 'true';
                                     const imgs = JSON.parse(decodeURIComponent($w.attr('data-images')));
                                     const currentBlockIdx = parseInt($w.attr('data-block-idx'));
+                                    const mesId = $w.closest('.mes').attr('mesid');
+                                    
+                                    // ✅ 从原始聊天记录读取，检查是否有scheduled标记
+                                    const chat = SillyTavern.chat;
+                                    const index = parseInt(mesId);
+                                    if (!chat || !chat[index]) return;
+                                    
+                                    const rawContent = chat[index].mes;
+                                    const sTag = escapeRegExp(settings.startTag);
+                                    const eTag = escapeRegExp(settings.endTag);
+                                    const regex = new RegExp(`${sTag}([\\s\\S]*?)${eTag}`, 'g');
+                                    const matches = [...rawContent.matchAll(regex)];
+                                    
+                                    if (matches.length <= currentBlockIdx) return;
+                                    
+                                    const blockContent = matches[currentBlockIdx][1];
+                                    const isScheduled = blockContent.includes(SCHEDULED_FLAG);
+                                    
+                                    if (isScheduled) {
+                                        addLog('AUTO_SKIP', `Block ${currentBlockIdx}: 文本标记显示已调度，跳过`);
+                                        return;
+                                    }
                                     
                                     addLog('AUTO_CHECK', `Block ${currentBlockIdx}: 检查自动生图条件 - 图片数=${imgs.length}, preventAuto=${prevent}`);
                                     
                                     if (imgs.length === 0 && !prevent) {
-                                        const delay = 500 + (currentBlockIdx * 1000);
-                                        addLog('AUTO_SCHEDULE', `Block ${currentBlockIdx}: 满足自动生图条件，将在 ${delay}ms 后触发`);
+                                        // ✅ 立即写入标记到文本
+                                        const prompt = decodeURIComponent($w.attr('data-prompt'));
+                                        addLog('AUTO_MARK', `Block ${currentBlockIdx}: 立即写入scheduled标记到聊天记录`);
                                         
-                                        setTimeout(() => {
-                                            addLog('AUTO_TRIGGER', `Block ${currentBlockIdx}: 延迟时间到，开始构造 state 并调用生图函数`);
-                                            if ($w.data('generating')) {
-                                            addLog('AUTO_SKIP', `Block ${currentBlockIdx}: 已在生成中，跳过重复触发`);
-                                            return;
-                                            }
-    
-                                            const currentImgs = JSON.parse(decodeURIComponent($w.attr('data-images')));
-                                            if (currentImgs.length > 0) {
-                                            addLog('AUTO_SKIP', `Block ${currentBlockIdx}: 延迟期间已生成图片，跳过`);
-                                            return;
-                                            }
-                                            const state = buildStateFromWrap($w);
-                                            if (state) {
-                                                addLog('AUTO_GEN', `Block ${state.blockIdx}: 直接调用 handleGeneration()`);
-                                                handleGeneration(state);
-                                            } else {
-                                                addLog('AUTO_FAIL', `Block ${currentBlockIdx}: state 构造失败，无法触发自动生图`);
-                                            }
-                                        }, delay);
+                                        updateChatData(mesId, currentBlockIdx, prompt, imgs, prevent, true).then(() => {
+                                            addLog('AUTO_MARK_DONE', `Block ${currentBlockIdx}: 标记写入完成`);
+                                            
+                                            ((blockId) => {
+                                                const delay = 500 + (blockId * 1000);
+                                                addLog('AUTO_SCHEDULE', `Block ${blockId}: 满足自动生图条件，将在 ${delay}ms 后触发`);
+                                                
+                                                setTimeout(() => {
+                                                    addLog('AUTO_TRIGGER', `Block ${blockId}: 延迟时间到，开始构造 state 并调用生图函数`);
+                                                    
+                                                    const currentImgs = JSON.parse(decodeURIComponent($w.attr('data-images')));
+                                                    if (currentImgs.length > 0) {
+                                                        addLog('AUTO_SKIP', `Block ${blockId}: 延迟期间已生成图片，跳过`);
+                                                        return;
+                                                    }
+                                                    
+                                                    const state = buildStateFromWrap($w);
+                                                    if (state) {
+                                                        addLog('AUTO_GEN', `Block ${state.blockIdx}: 直接调用 handleGeneration()`);
+                                                        handleGeneration(state);
+                                                    } else {
+                                                        addLog('AUTO_FAIL', `Block ${blockId}: state 构造失败，无法触发自动生图`);
+                                                    }
+                                                }, delay);
+                                            })(currentBlockIdx);
+                                        });
                                     } else {
                                         if (imgs.length > 0) {
                                             addLog('AUTO_SKIP', `Block ${currentBlockIdx}: 已有 ${imgs.length} 张图片，跳过自动生图`);
@@ -640,7 +688,11 @@
             
             const html = $el.html();
             if (html.indexOf(sTag) === -1) return;
-            if ($el.find('.sd-ui-wrap').length > 0 && !$el.attr('data-dirty')) return;
+
+            if ($el.find('.sd-ui-wrap').length > 0) {
+                addLog('DOM_SKIP', '已存在UI框框，跳过避免重复创建');
+                return;
+            }
 
             let hasChange = false;
             
@@ -657,39 +709,69 @@
                 
                 setTimeout(() => $el.find('.sd-ui-msg.show').removeClass('show'), 2000);
                 
-                // ✅ 改为直接调用 handleGeneration，不再模拟点击
+                // ✅ 使用文本标记检查
                 $el.find('.sd-ui-wrap').each(function() {
                     const $w = $(this);
+                    
                     const prevent = $w.attr('data-prevent-auto') === 'true';
                     const imgs = JSON.parse(decodeURIComponent($w.attr('data-images')));
                     const currentBlockIdx = parseInt($w.attr('data-block-idx'));
+                    const mesId = $w.closest('.mes').attr('mesid');
+                    
+                    // ✅ 从原始聊天记录读取，检查是否有scheduled标记
+                    const chat = SillyTavern.chat;
+                    const index = parseInt(mesId);
+                    if (!chat || !chat[index]) return;
+                    
+                    const rawContent = chat[index].mes;
+                    const sTag = escapeRegExp(settings.startTag);
+                    const eTag = escapeRegExp(settings.endTag);
+                    const regex = new RegExp(`${sTag}([\\s\\S]*?)${eTag}`, 'g');
+                    const matches = [...rawContent.matchAll(regex)];
+                    
+                    if (matches.length <= currentBlockIdx) return;
+                    
+                    const blockContent = matches[currentBlockIdx][1];
+                    const isScheduled = blockContent.includes(SCHEDULED_FLAG);
+                    
+                    if (isScheduled) {
+                        addLog('AUTO_SKIP', `Block ${currentBlockIdx}: 文本标记显示已调度，跳过`);
+                        return;
+                    }
                     
                     addLog('AUTO_CHECK', `Block ${currentBlockIdx}: 检查自动生图条件 - 图片数=${imgs.length}, preventAuto=${prevent}`);
                     
                     if (imgs.length === 0 && !prevent) {
-                        const delay = 500 + (blockIdx * 1000);
-                        addLog('AUTO_SCHEDULE', `Block ${currentBlockIdx}: 满足自动生图条件，将在 ${delay}ms 后触发`);
+                        // ✅ 立即写入标记到文本
+                        const prompt = decodeURIComponent($w.attr('data-prompt'));
+                        addLog('AUTO_MARK', `Block ${currentBlockIdx}: 立即写入scheduled标记到聊天记录`);
                         
-                        setTimeout(() => {
-                            addLog('AUTO_TRIGGER', `Block ${currentBlockIdx}: 延迟时间到，开始构造 state 并调用生图函数`);
-                                if ($w.data('generating')) {
-        addLog('AUTO_SKIP', `Block ${currentBlockIdx}: 已在生成中，跳过重复触发`);
-        return;
-    }
-    
-    const currentImgs = JSON.parse(decodeURIComponent($w.attr('data-images')));
-    if (currentImgs.length > 0) {
-        addLog('AUTO_SKIP', `Block ${currentBlockIdx}: 延迟期间已生成图片，跳过`);
-        return;
-    }
-                            const state = buildStateFromWrap($w);
-                            if (state) {
-                                addLog('AUTO_GEN', `Block ${state.blockIdx}: 直接调用 handleGeneration()`);
-                                handleGeneration(state);
-                            } else {
-                                addLog('AUTO_FAIL', `Block ${currentBlockIdx}: state 构造失败，无法触发自动生图`);
-                            }
-                        }, delay);
+                        updateChatData(mesId, currentBlockIdx, prompt, imgs, prevent, true).then(() => {
+                            addLog('AUTO_MARK_DONE', `Block ${currentBlockIdx}: 标记写入完成`);
+                            
+                            ((blockId) => {
+                                const delay = 500 + (blockId * 1000);
+                                addLog('AUTO_SCHEDULE', `Block ${blockId}: 满足自动生图条件，将在 ${delay}ms 后触发`);
+                                
+                                setTimeout(() => {
+                                    addLog('AUTO_TRIGGER', `Block ${blockId}: 延迟时间到，开始构造 state 并调用生图函数`);
+                                    
+                                    const currentImgs = JSON.parse(decodeURIComponent($w.attr('data-images')));
+                                    if (currentImgs.length > 0) {
+                                        addLog('AUTO_SKIP', `Block ${blockId}: 延迟期间已生成图片，跳过`);
+                                        return;
+                                    }
+                                    
+                                    const state = buildStateFromWrap($w);
+                                    if (state) {
+                                        addLog('AUTO_GEN', `Block ${state.blockIdx}: 直接调用 handleGeneration()`);
+                                        handleGeneration(state);
+                                    } else {
+                                        addLog('AUTO_FAIL', `Block ${blockId}: state 构造失败，无法触发自动生图`);
+                                    }
+                                }, delay);
+                            })(currentBlockIdx);
+                        });
                     } else {
                         if (imgs.length > 0) {
                             addLog('AUTO_SKIP', `Block ${currentBlockIdx}: 已有 ${imgs.length} 张图片，跳过自动生图`);
@@ -703,23 +785,32 @@
         });
     }
 
+    // ✅ 修改：解析时检测scheduled标记
     function parseBlockContent(rawContent) {
         const tempDiv = document.createElement('div');
         tempDiv.innerHTML = rawContent;
         let text = tempDiv.innerText || tempDiv.textContent || '';
+        
         const preventAuto = rawContent.includes(NO_GEN_FLAG);
+        const isScheduled = rawContent.includes(SCHEDULED_FLAG);
+        
         const urlRegex = /(https?:\/\/|\/|output\/)[^\s"']+\.(png|jpg|jpeg|webp|gif)/gi;
         const images = text.match(urlRegex) || [];
+        
         let prompt = text.replace(urlRegex, '').trim();
         prompt = prompt.replace(NO_GEN_FLAG, '').trim();
+        prompt = prompt.replace(SCHEDULED_FLAG, '').trim();
         prompt = prompt.replace(/^\s*[\r\n]/gm, '').trim();
-        return { prompt, images, preventAuto };
+        
+        return { prompt, images, preventAuto, isScheduled };
     }
 
-    function rebuildBlockString(prompt, images, preventAuto) {
+    // ✅ 修改：重建时支持scheduled标记
+    function rebuildBlockString(prompt, images, preventAuto, isScheduled) {
         let content = prompt;
         if (images.length > 0) content += '\n' + images.join('\n');
         else if (preventAuto) content += '\n' + NO_GEN_FLAG;
+        else if (isScheduled) content += '\n' + SCHEDULED_FLAG;
         return content;
     }
 
@@ -833,14 +924,14 @@
                 state.prompt = $promptArea.val().trim();
                 state.$wrap.attr('data-prompt', encodeURIComponent(state.prompt));
                 closeCurrentPopup(this);
-                await updateChatData(state.mesId, state.blockIdx, state.prompt, state.images, state.preventAuto);
+                await updateChatData(state.mesId, state.blockIdx, state.prompt, state.images, state.preventAuto, false);
             });
             
             $(`#${btnGenId}`).on('click', async function() {
                 state.prompt = $promptArea.val().trim();
                 state.$wrap.attr('data-prompt', encodeURIComponent(state.prompt));
                 closeCurrentPopup(this);
-                await updateChatData(state.mesId, state.blockIdx, state.prompt, state.images, state.preventAuto);
+                await updateChatData(state.mesId, state.blockIdx, state.prompt, state.images, state.preventAuto, false);
                 state.prompt = $promptArea.val().trim();
                 addLog('POPUP_GEN', `Block ${state.blockIdx}: 用户通过编辑弹窗触发生图`);
                 handleGeneration(state);
@@ -865,10 +956,18 @@
 
     function openSettingsPopup() {
         const timestamp = Date.now();
-        const btnSaveId = `sd-save-${timestamp}`; const tabInjId = `sd-tab-inj-${timestamp}`; const tabCfgId = `sd-tab-cfg-${timestamp}`; const tabApiId = `sd-tab-api-${timestamp}`; const tabLogId = `sd-tab-log-${timestamp}`;
+        const btnSaveId = `sd-save-${timestamp}`; 
+        const tabInjId = `sd-tab-inj-${timestamp}`; 
+        const tabCfgId = `sd-tab-cfg-${timestamp}`; 
+        const tabApiId = `sd-tab-api-${timestamp}`; 
+        const tabLogId = `sd-tab-log-${timestamp}`;
         const btnResetId = `sd-reset-${timestamp}`;
-        const contentInjId = `sd-content-inj-${timestamp}`; const contentCfgId = `sd-content-cfg-${timestamp}`; const contentApiId = `sd-content-api-${timestamp}`; const contentLogId = `sd-content-log-${timestamp}`;
-        const btnExpId = `sd-export-${timestamp}`; const btnImpId = `sd-import-${timestamp}`;
+        const contentInjId = `sd-content-inj-${timestamp}`; 
+        const contentCfgId = `sd-content-cfg-${timestamp}`; 
+        const contentApiId = `sd-content-api-${timestamp}`; 
+        const contentLogId = `sd-content-log-${timestamp}`;
+        const btnExpId = `sd-export-${timestamp}`; 
+        const btnImpId = `sd-import-${timestamp}`;
         const logText = RUNTIME_LOGS.join('\n');
 
         const popupHtml = `
@@ -944,6 +1043,7 @@
                     </div>
                 </div>
                 <div id="${contentLogId}" class="sd-tab-content"><textarea readonly class="text_pole" style="width:100%; height:300px; font-family:monospace; font-size:0.8em; white-space:pre;">${logText}</textarea></div>
+
                 <button id="${btnResetId}" class="menu_button" style="width: 100%; padding: 10px; background-color: #666; color: #fff; margin-top: 5px;">
                     <i class="fa-solid fa-rotate-left"></i> 重置为默认设置
                 </button>
@@ -1096,6 +1196,7 @@
             clearTimeout(debounceTimer);
             debounceTimer = setTimeout(() => {
                 persistentListenCount = 0;
+                processChatDOM(); 
             }, 500);
         };
 
