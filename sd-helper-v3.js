@@ -974,8 +974,7 @@ $el.find('.sd-ui-wrap').each(function() {
                     <textarea id="sd-suf" class="text_pole" rows="2" style="width:100%">${settings.globalSuffix}</textarea>
                     <label style="margin-top:10px; display:block;">负面提示词</label>
                     <textarea id="sd-neg" class="text_pole" rows="3" style="width:100%">${settings.globalNegative}</textarea>
-                </div>
-                <label style="margin-top:10px; display:block;">自动修复</label>
+                    <label style="margin-top:10px; display:block;">自动修复</label>
                 <div style="margin-bottom: 15px; padding: 10px; background: #171717; border-radius: 5px;">
                     <label style="display: flex; align-items: center; gap: 8px;">
                         <input type="checkbox" id="sd-auto-refresh" ${settings.autoRefresh?'checked':''}>
@@ -993,7 +992,8 @@ $el.find('.sd-ui-wrap').each(function() {
                                    style="width: 60px; margin-left: 5px; background: #000000;">
                         </label>
                     </div>
-                </div>                    
+                </div>
+                </div>
                 
                 <div id="sd-tab-api" class="sd-tab-content">
                     <div class="sd-api-row">
