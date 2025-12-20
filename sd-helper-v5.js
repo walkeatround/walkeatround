@@ -9,6 +9,50 @@
 
 (function () {
     'use strict';
+    function gmFetch(url, options = {}) {
+        return new Promise((resolve, reject) => {
+            GM_xmlhttpRequest({
+                method: options.method || 'GET',
+                url: url,
+                headers: options.headers || {},
+                data: options.body || undefined,
+                timeout: 60000,  // 60秒超时
+                onload: (response) => {
+                    const res = {
+                        ok: response.status >= 200 && response.status < 300,
+                        status: response.status,
+                        statusText: response.statusText,
+                        headers: {
+                            get: (name) => {
+                                const header = response.responseHeaders
+                                    .split('\n')
+                                    .find(h => h.toLowerCase().startsWith(name.toLowerCase()));
+                                return header ? header.split(': ')[1] : null;
+                            }
+                        },
+                        text: () => Promise.resolve(response.responseText),
+                        json: () => {
+                            try {
+                                return Promise.resolve(JSON.parse(response.responseText));
+                            } catch (e) {
+                                return Promise.reject(new Error('Invalid JSON: ' + response.responseText.substring(0, 100)));
+                            }
+                        }
+                    };
+                    resolve(res);
+                },
+                onerror: (error) => {
+                    reject(new Error(`Network error: ${error.error || 'Unknown'}`));
+                },
+                ontimeout: () => {
+                    reject(new Error('Request timeout (60s)'));
+                }
+            });
+        });
+    }
+
+    // 智能选择：有 GM 就用 GM，没有就用普通 fetch
+    const safeFetch = (typeof GM_xmlhttpRequest !== 'undefined') ? gmFetch : fetch;
 
     const SCRIPT_ID = 'sd_gen_standard_v35';
     const STORAGE_KEY = 'sd_gen_settings';
@@ -36,6 +80,7 @@
         3. Fixed tags MUST be copied exactly - treat as immutable code
         4. For interactions: generate separate prompts from each perspective
         5. Tags format: '1girl, [FIXED_TAGS], [expression], [attire], [pose], [action], [focus], [viewpoint], [environment], [lighting], [quality]'
+        6. Never generate url.
             
         ## Attire Requirements:
         - Describe: upper body + lower body + feet
@@ -244,7 +289,7 @@
             const headers = { 'Content-Type': 'application/json' };
             if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
             
-            const res = await fetch(url, { method: 'GET', headers });
+            const res = await safeFetch(url, { method: 'GET', headers });
             if (!res.ok) throw new Error(`HTTP ${res.status}: ${res.statusText}`);
             
             const data = await res.json();
@@ -289,7 +334,7 @@
         addLog('API', `Model: ${requestBody.model}`);
 
         try {
-            const res = await fetch(url, {
+            const res = await safeFetch(url, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
@@ -347,7 +392,7 @@
         addLog('API', `模版修改请求: ${url}`);
 
         try {
-            const res = await fetch(url, {
+            const res = await safeFetch(url, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
