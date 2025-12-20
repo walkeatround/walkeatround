@@ -984,13 +984,13 @@ $el.find('.sd-ui-wrap').each(function() {
                     <small style="color: #888; display: block; margin-left: 24px; margin-top: 4px;">
                         ⚠️ 自动扫描并修复UI（可能引起问题，无必要不开）
                     </small>
-                    <div style="margin-left: 24px; margin-top: 8px; background: #000000;">
+                    <div style="margin-left: 24px; margin-top: 8px;">
                         <label style="font-size: 12px;">
                             修复间隔（秒）：
                             <input type="number" id="sd-auto-refresh-interval" 
                                    value="${settings.autoRefreshInterval / 1000}" 
                                    min="1" max="60" step="0.1"
-                                   style="width: 60px; margin-left: 5px;">
+                                   style="width: 60px; margin-left: 5px; background: #000000;">
                         </label>
                     </div>
                 </div>                    
