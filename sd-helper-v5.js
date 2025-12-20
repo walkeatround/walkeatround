@@ -80,7 +80,7 @@
         3. Fixed tags MUST be copied exactly - treat as immutable code
         4. For interactions: generate separate prompts from each perspective
         5. Tags format: '1girl, [FIXED_TAGS], [expression], [attire], [pose], [action], [focus], [viewpoint], [environment], [lighting], [quality]'
-        6. Never generate url.
+        6. Never generate url. **Absolutely prohibit generating image file names or paths, such as /user/images/红莲_2026-01-17@17h15m15s.png or any similar format.**
             
         ## Attire Requirements:
         - Describe: upper body + lower body + feet
