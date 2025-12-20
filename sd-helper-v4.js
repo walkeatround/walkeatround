@@ -1394,6 +1394,8 @@ function registerSTEvents() {
         tavern_events.MESSAGE_SWIPE_DELETED,  // 'message_swipe_deleted'
         tavern_events.MORE_MESSAGES_LOADED,   // 'more_messages_loaded'
         tavern_events.CHAT_CHANGED,           // 'chat_id_changed'
+        tavern_events.CHARACTER_MESSAGE_RENDERED,
+        tavern_events.WORLDINFO_UPDATED,
     ];
 
     const handler = () => {
