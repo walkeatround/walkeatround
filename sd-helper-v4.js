@@ -939,7 +939,7 @@ $el.find('.sd-ui-wrap').each(function() {
                             <button id="sd-tpl-del" class="sd-btn-danger">🗑️ 删除模版</button>
                         </div>
                         <div style="font-size:0.85em; color:#888; margin-top:8px;">
-                            <i class="fa-solid fa-info-circle"></i> 模版中的 <!--人物列表--> 将自动替换为上方启用的人物
+                            <i class="fa-solid fa-info-circle"></i> 创建新模版请修改名称和内容之后点另存。<br>模版中的 <code>&lt;!--人物列表--&gt;</code> 将自动替换为上方启用的人物。
                         </div>
                         
                         <div id="sd-template-editor" class="sd-template-editor">
