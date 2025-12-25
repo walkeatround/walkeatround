@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         生图助手 (v41 - 新拟态UI + 过滤标签)
-// @version      v41.0
-// @description  深色新拟态风格UI美化、独立生词过滤标签、请求中状态提示
+// @name         生图助手 (v42 - 手动生词 + CSS作用域修复)
+// @version      v42.0
+// @description  新增手动生词按钮、CSS作用域限定、终止提示优化
 // @author       Walkeatround & Gemini & AI Assistant
 // @match        */*
 // @grant        none
@@ -136,20 +136,23 @@ highly detailed, masterpiece, best quality
         injectRole: 'system',
         selectedTemplate: "默认模版",
         characters: [
-            { name: 'Character 1', tags: 'short black hair, red eyes, black dress', enabled: false }
+            { name: 'Character 1', tags: 'long white hair, red eyes, white dress', enabled: false }
         ],
         llmConfig: { 
             baseUrl: 'https://api.deepseek.com', 
             apiKey: '', 
             model: 'deepseek-chat', 
             maxTokens: 8192, 
-            temperature: 0.7,
+            temperature: 0.9,
             topP: 1.0,
             presencePenalty: 0.0,
             frequencyPenalty: 0.0
         },
         autoRefresh: false,  // 自动刷新开关
         autoRefreshInterval: 3000, // 刷新间隔（毫秒）
+        // 超时设置
+        timeoutEnabled: false,        // 请求超时开关
+        timeoutSeconds: 120,         // 超时时间（秒）
         // 独立生图模式
         independentApiEnabled: false,      // 独立生图模式开关
         independentApiHistoryCount: 4,     // 历史消息数量
@@ -183,17 +186,6 @@ highly detailed, masterpiece, best quality
         --nm-border: rgba(255, 255, 255, 0.05);
         --nm-radius: 12px;
         --nm-radius-sm: 8px;
-    }
-    
-    /* 新拟态弹窗容器 */
-    .sd-settings-popup {
-        font-family: 'Georgia', 'Times New Roman', 'Noto Serif SC', serif !important;
-        background: linear-gradient(145deg, #1e1e24, #252530) !important;
-        border-radius: var(--nm-radius) !important;
-        box-shadow: 
-            8px 8px 16px var(--nm-shadow-dark),
-            -4px -4px 12px var(--nm-shadow-light),
-            inset 0 1px 0 rgba(255,255,255,0.05) !important;
     }
     
     .sd-ui-container * { box-sizing: border-box; user-select: none; font-family: 'Georgia', 'Times New Roman', 'Noto Serif SC', serif; }
@@ -274,19 +266,19 @@ highly detailed, masterpiece, best quality
     .sd-placeholder.requesting { color: var(--nm-accent) !important; animation: sd-pulse 1.5s ease-in-out infinite; }
     @keyframes sd-pulse { 0%, 100% { opacity: 0.6; } 50% { opacity: 1; } }
     
-    /* 新拟态输入框全局样式 */
-    .text_pole { background: var(--nm-bg) !important; border: none !important; color: var(--nm-text) !important; padding: 10px 12px !important; border-radius: var(--nm-radius-sm) !important; box-shadow: inset 2px 2px 5px var(--nm-shadow-dark), inset -1px -1px 4px var(--nm-shadow-light) !important; font-family: 'Georgia', 'Times New Roman', 'Noto Serif SC', serif !important; transition: all 0.2s !important; }
-    .text_pole:focus { outline: none !important; box-shadow: inset 2px 2px 5px var(--nm-shadow-dark), inset -1px -1px 4px var(--nm-shadow-light), 0 0 10px var(--nm-accent-glow) !important; }
+    /* 新拟态输入框样式 - 仅限弹窗内 */
+    .sd-settings-popup .text_pole { background: var(--nm-bg) !important; border: none !important; color: var(--nm-text) !important; padding: 10px 12px !important; border-radius: var(--nm-radius-sm) !important; box-shadow: inset 2px 2px 5px var(--nm-shadow-dark), inset -1px -1px 4px var(--nm-shadow-light) !important; font-family: 'Georgia', 'Times New Roman', 'Noto Serif SC', serif !important; transition: all 0.2s !important; }
+    .sd-settings-popup .text_pole:focus { outline: none !important; box-shadow: inset 2px 2px 5px var(--nm-shadow-dark), inset -1px -1px 4px var(--nm-shadow-light), 0 0 10px var(--nm-accent-glow) !important; }
     
     /* 新拟态滚动条 */
     .sd-char-list-container::-webkit-scrollbar, .sd-indep-preview::-webkit-scrollbar { width: 8px; }
     .sd-char-list-container::-webkit-scrollbar-track, .sd-indep-preview::-webkit-scrollbar-track { background: var(--nm-bg); border-radius: 4px; }
     .sd-char-list-container::-webkit-scrollbar-thumb, .sd-indep-preview::-webkit-scrollbar-thumb { background: linear-gradient(145deg, #3a3a45, #2a2a35); border-radius: 4px; box-shadow: 1px 1px 3px var(--nm-shadow-dark); }
     
-    /* 新拟态标题样式 */
-    h4 { font-family: 'Georgia', 'Times New Roman', 'Noto Serif SC', serif !important; color: var(--nm-text) !important; letter-spacing: 0.5px; font-weight: 600; }
-    small { color: var(--nm-text-muted) !important; font-family: 'Georgia', 'Times New Roman', 'Noto Serif SC', serif !important; }
-    label { font-family: 'Georgia', 'Times New Roman', 'Noto Serif SC', serif !important; }
+    /* 新拟态标题样式 - 仅限弹窗内 */
+    .sd-settings-popup h4 { font-family: 'Georgia', 'Times New Roman', 'Noto Serif SC', serif !important; color: var(--nm-text) !important; letter-spacing: 0.5px; font-weight: 600; }
+    .sd-settings-popup small { color: var(--nm-text-muted) !important; font-family: 'Georgia', 'Times New Roman', 'Noto Serif SC', serif !important; }
+    .sd-settings-popup label { font-family: 'Georgia', 'Times New Roman', 'Noto Serif SC', serif !important; }
     `;
 
     // --- UTILITIES ---
@@ -943,7 +935,7 @@ ${userTemplate}
      * @returns {Object} - toastr对象
      */
     function showIndependentApiProgress(message) {
-        return toastr.info(message + '<br><small>点击此处终止</small>', '🎨 独立API生图', {
+        return toastr.info(message + '<br><small style="color: #ffcc00; opacity: 0.9;">⏹️ 点击此处终止</small>', '🎨 独立API生图', {
             timeOut: 0,
             extendedTimeOut: 0,
             closeButton: true,
@@ -1235,8 +1227,22 @@ ${userTemplate}
         state.el.msg.text('⏳ 请求中...').addClass('show');
         state.el.img.css('opacity', '0.5');
 
+        // 超时包装函数
+        const withTimeout = (promise, ms) => {
+            return Promise.race([
+                promise,
+                new Promise((_, reject) => 
+                    setTimeout(() => reject(new Error(`请求超时 (${ms/1000}秒)`)), ms)
+                )
+            ]);
+        };
+
         try {
-            const result = await triggerSlash(cmd);
+            // 根据设置决定是否启用超时
+            const slashPromise = triggerSlash(cmd);
+            const result = settings.timeoutEnabled 
+                ? await withTimeout(slashPromise, settings.timeoutSeconds * 1000)
+                : await slashPromise;
             const newUrls = (result || '').match(/(https?:\/\/|\/|output\/)[^\s"']+\.(png|jpg|jpeg|webp|gif)/gi) || [];
             if (newUrls.length > 0) {
                 state.el.msg.text('✅ 成功');
@@ -1249,7 +1255,7 @@ ${userTemplate}
             } else { state.el.msg.text('⚠️ 无结果'); }
         } catch (err) { 
             console.error('Generation error:', err);
-            state.el.msg.text('❌ 错误'); 
+            state.el.msg.text(err.message.includes('超时') ? '⏱️ 超时' : '❌ 错误'); 
         }
         finally {
             state.$wrap.data('generating', false);
@@ -1565,7 +1571,7 @@ $el.find('.sd-ui-wrap').each(function() {
         const isDefaultTemplate = DEFAULT_TEMPLATES.hasOwnProperty(selectedTemplate);
 
         const html = `
-            <div style="padding: 10px; max-height: 70vh; overflow-y: auto;">
+            <div class="sd-settings-popup" style="padding: 10px; max-height: 70vh; overflow-y: auto;">
                 <div class="sd-tab-nav">
                     <div class="sd-tab-btn active" data-tab="basic">基本设置</div>
                     <div class="sd-tab-btn" data-tab="chars">人物与模版</div>
@@ -1627,6 +1633,25 @@ $el.find('.sd-ui-wrap').each(function() {
                             <label style="font-size: 12px;">
                                 防抖延迟(ms)：
                                 <input type="number" id="sd-indep-debounce" class="text_pole" value="${settings.independentApiDebounceMs}" min="500" max="5000" step="100" style="width:80px;">
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <div style="margin-bottom: 12px;">
+                        <label style="display: flex; align-items: center; gap: 8px;">
+                            <input type="checkbox" id="sd-timeout-en" ${settings.timeoutEnabled?'checked':''}>
+                            <span style="font-weight: bold;">启用请求超时</span>
+                        </label>
+                        <small style="color: #888; display: block; margin-left: 24px; margin-top: 4px;">
+                            生图请求超过指定时间后自动取消，避免永远卡在"请求中"
+                        </small>
+                        <div style="margin-left: 24px; margin-top: 8px;">
+                            <label style="font-size: 12px;">
+                                超时时间(秒)：
+                                <input type="number" id="sd-timeout-seconds" class="text_pole" 
+                                       value="${settings.timeoutSeconds}" 
+                                       min="30" max="600" step="10"
+                                       style="width: 80px;">
                             </label>
                         </div>
                     </div>
@@ -2233,7 +2258,11 @@ $el.find('.sd-ui-wrap').each(function() {
                 settings.globalSuffix = $('#sd-suf').val();
                 settings.globalNegative = $('#sd-neg').val();
                 settings.autoRefresh = $('#sd-auto-refresh').prop('checked'); //读取自动刷新配置
-                settings.autoRefreshInterval = parseInt($('#sd-auto-refresh-interval').val()) * 1000; //
+                settings.autoRefreshInterval = parseInt($('#sd-auto-refresh-interval').val()) * 1000;
+                
+                // 超时设置
+                settings.timeoutEnabled = $('#sd-timeout-en').is(':checked');
+                settings.timeoutSeconds = parseInt($('#sd-timeout-seconds').val()) || 120;
                 
                 // 独立API模式设置
                 settings.independentApiEnabled = $('#sd-indep-en').is(':checked');
@@ -2355,9 +2384,10 @@ if (typeof appendInexistentScriptButtons === 'function' && typeof getButtonEvent
     // 1. 添加按钮
     appendInexistentScriptButtons([
         { name: 'SD修复', visible: true },
+        { name: '手动生词', visible: true },
     ]);
 
-    // 2. 绑定按钮事件：点击后立即执行一次 processChatDOM
+    // 2. 绑定SD修复按钮事件：点击后立即执行一次 processChatDOM
     eventOn(getButtonEvent('SD修复'), () => {
         try {
             processChatDOM();
@@ -2368,6 +2398,80 @@ if (typeof appendInexistentScriptButtons === 'function' && typeof getButtonEvent
             console.error('[生图助手] 修复时出错：', e);
             if (typeof toastr !== 'undefined') {
                 toastr.error('❌ 修复失败，请查看控制台');
+            }
+        }
+    });
+    
+    // 3. 绑定手动生词按钮事件：清除最新楼层的IMG_GEN标签，然后重新执行独立API生图
+    eventOn(getButtonEvent('手动生词'), async () => {
+        try {
+            const chat = SillyTavern.chat;
+            if (!chat || chat.length === 0) {
+                toastr.warning('⚠️ 没有找到聊天记录');
+                return;
+            }
+            
+            // 找到最新的AI消息
+            let latestAiMesId = -1;
+            for (let i = chat.length - 1; i >= 0; i--) {
+                if (!chat[i].is_user) {
+                    latestAiMesId = i;
+                    break;
+                }
+            }
+            
+            if (latestAiMesId < 0) {
+                toastr.warning('⚠️ 没有找到AI消息');
+                return;
+            }
+            
+            const message = chat[latestAiMesId];
+            const originalText = message.mes;
+            
+            // 清除 [IMG_GEN]...[/IMG_GEN] 标签及其内容
+            const startTag = settings.startTag || '[IMG_GEN]';
+            const endTag = settings.endTag || '[/IMG_GEN]';
+            // 转义正则特殊字符
+            const escapeRe = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const regex = new RegExp(
+                escapeRe(startTag) + '[\\s\\S]*?' + escapeRe(endTag),
+                'gi'
+            );
+            const cleanedText = originalText.replace(regex, '').replace(/\n{3,}/g, '\n\n').trim();
+            
+            if (cleanedText === originalText) {
+                toastr.info('ℹ️ 消息中没有IMG_GEN标签，直接执行生词');
+            } else {
+                // 更新消息内容
+                message.mes = cleanedText;
+                
+                // 保存到聊天
+                try {
+                    await SillyTavern.context.saveChat();
+                    await SillyTavern.eventSource.emit('message_updated', latestAiMesId);
+                    addLog('MANUAL', `已清除消息${latestAiMesId}的IMG_GEN标签`);
+                    toastr.info('🧹 已清除IMG_GEN标签');
+                } catch (e) {
+                    addLog('WARN', `保存失败: ${e.message}`);
+                }
+            }
+            
+            // 刷新UI
+            processChatDOM();
+            
+            // 延迟后执行独立API生图
+            setTimeout(() => {
+                if (settings.independentApiEnabled && settings.enabled) {
+                    handleIndependentApiGeneration(latestAiMesId);
+                } else {
+                    toastr.warning('⚠️ 请先在设置中启用"独立生图模式"');
+                }
+            }, 500);
+            
+        } catch (e) {
+            console.error('[生图助手] 手动生词时出错：', e);
+            if (typeof toastr !== 'undefined') {
+                toastr.error('❌ 手动生词失败，请查看控制台');
             }
         }
     });
