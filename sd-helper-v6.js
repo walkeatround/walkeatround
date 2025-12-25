@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         生图助手 (v42 - 手动生词 + CSS作用域修复)
-// @version      v42.0
-// @description  新增手动生词按钮、CSS作用域限定、终止提示优化
+// @name         生图助手 (v42.2 - 错误保持scheduled)
+// @version      v42.2
+// @description  错误/超时保持scheduled状态，no_gen仅在删除图片时填入
 // @author       Walkeatround & Gemini & AI Assistant
 // @match        */*
 // @grant        none
@@ -171,6 +171,9 @@ highly detailed, masterpiece, best quality
     let independentApiDebounceTimer = null;
     let independentApiAbortController = null;
     let independentApiLastPreview = { latest: '', history: [] };  // 用于UI预览
+    
+    // Scheduled 超时计时器 Map (key: "mesId-blockIdx", value: timeoutId)
+    const scheduledTimeoutMap = new Map();
 
     // --- CSS ---
     const GLOBAL_CSS = `
@@ -1373,7 +1376,71 @@ $el.find('.sd-ui-wrap').each(function() {
     }
     
     // 原有逻辑：判断是否需要触发生图
-    if (matches[bIdx][1].includes(SCHEDULED_FLAG) || matches[bIdx][1].includes(NO_GEN_FLAG)) {
+    if (matches[bIdx][1].includes(SCHEDULED_FLAG)) {
+        // 检测到 scheduled 状态，启动超时计时器（如果启用了超时功能）
+        const timeoutKey = `${mesId}-${bIdx}`;
+        
+        if (settings.timeoutEnabled && !scheduledTimeoutMap.has(timeoutKey)) {
+            const timeoutMs = (settings.timeoutSeconds || 120) * 1000;
+            addLog('TIMEOUT', `开始监控 scheduled 状态: ${timeoutKey}, 超时时间: ${settings.timeoutSeconds}秒`);
+            
+            const timeoutId = setTimeout(async () => {
+                scheduledTimeoutMap.delete(timeoutKey);
+                
+                // 检查是否仍然是 scheduled 状态
+                const currentChat = SillyTavern.chat[parseInt(mesId)];
+                if (!currentChat) return;
+                
+                const currentMatches = [...currentChat.mes.matchAll(regex)];
+                if (!currentMatches[bIdx] || !currentMatches[bIdx][1].includes(SCHEDULED_FLAG)) {
+                    addLog('TIMEOUT', `${timeoutKey} 已完成，无需处理超时`);
+                    return;
+                }
+                
+                // 超时：清除 scheduled 标志（不填入 no_gen），然后刷新UI触发重新生图
+                addLog('TIMEOUT', `${timeoutKey} 超时，清除 scheduled 状态并重新触发生图`);
+                
+                // 移除 [scheduled] 标志，让 processChatDOM 重新触发生图
+                const updatedMes = currentChat.mes.replace(
+                    new RegExp(`${escapeRegExp(settings.startTag)}([\\s\\S]*?)${escapeRegExp(settings.endTag)}`, 'g'),
+                    (m, content) => {
+                        if (content.includes(SCHEDULED_FLAG)) {
+                            // 只移除 scheduled 标志，不添加 no_gen
+                            return m.replace(SCHEDULED_FLAG, '');
+                        }
+                        return m;
+                    }
+                );
+                
+                currentChat.mes = updatedMes;
+                
+                try {
+                    await SillyTavern.context.saveChat();
+                    await SillyTavern.eventSource.emit('message_updated', parseInt(mesId));
+                    if (typeof toastr !== 'undefined') {
+                        toastr.info(`⏱️ 生图请求超时，正在重试... (消息${mesId}, 块${bIdx})`, null, { timeOut: 3000 });
+                    }
+                } catch (e) {
+                    addLog('WARN', `超时处理保存失败: ${e.message}`);
+                }
+                
+                // 刷新UI，触发重新生图
+                processChatDOM();
+            }, timeoutMs);
+            
+            scheduledTimeoutMap.set(timeoutKey, timeoutId);
+        }
+        return;
+    }
+    
+    if (matches[bIdx][1].includes(NO_GEN_FLAG)) {
+        // 如果有正在运行的超时计时器，清除它
+        const timeoutKey = `${mesId}-${bIdx}`;
+        if (scheduledTimeoutMap.has(timeoutKey)) {
+            clearTimeout(scheduledTimeoutMap.get(timeoutKey));
+            scheduledTimeoutMap.delete(timeoutKey);
+            addLog('TIMEOUT', `${timeoutKey} 已完成或取消，清除超时计时器`);
+        }
         return;
     }
     
