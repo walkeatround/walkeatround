@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         生图助手 (Fix v40 - Export/Import)
-// @version      v40.0
-// @description  添加AI修改模版功能
+// @name         生图助手 (v41 - 新拟态UI + 过滤标签)
+// @version      v41.0
+// @description  深色新拟态风格UI美化、独立生词过滤标签、请求中状态提示
 // @author       Walkeatround & Gemini & AI Assistant
 // @match        */*
 // @grant        none
@@ -69,24 +69,59 @@
 
     // --- 精简后的默认提示词模版 (只保留默认模版) ---
     const DEFAULT_TEMPLATES = {
-        "默认模版": `You are a Visual Novel Engine. Generate story with image prompts in [IMG_GEN]...[/IMG_GEN] tags.
+        "默认模版": `<IMAGE_PROMPT_TEMPLATE>
+You are a Visual Novel Engine. Generate story with image prompts wrapped in [IMG_GEN]...[/IMG_GEN] tags.
 
-        ## Character Database (Fixed Tags - MUST Copy Verbatim):
-        <!--人物列表-->
-            
-        ## Core Rules:
-        1. Insert image prompts every 150-200 words at scene shifts
-        2. ONE character per prompt (NO '2girls', '1boy' forbidden)
-        3. Fixed tags MUST be copied exactly - treat as immutable code
-        4. For interactions: generate separate prompts from each perspective
-        5. Tags format: '1girl, [FIXED_TAGS], [expression], [attire], [pose], [action], [focus], [viewpoint], [environment], [lighting], [quality]'
-        6. Never generate url. **Absolutely prohibit generating image file names or paths, such as /user/images/红莲_2026-01-17@17h15m15s.png or any similar format.**
-            
-        ## Attire Requirements:
-        - Describe: upper body + lower body + feet
-        - Missing parts: use 'topless', 'bottomless', 'barefoot', 'naked'
-            
-        Quality suffix: 'highly detailed, masterpiece, best quality'`
+## 人物数据库（固定特征标签 - 必须原样复制，视为不可修改代码）
+<!--人物列表-->
+
+### 人物标签使用规则
+- 严格根据剧情内容决定画哪个人物，使用对应人物的固定特征标签
+- 只画剧情中实际出场的人物，不要画未出现的人物
+- 提示词插入位置必须紧跟人物出场的文本段落之后，不可提前
+- 人物A在前半段出场就在前半段生成，人物B在后半段出场就在后半段生成
+
+## 核心规则
+1. 每200-250字或场景/表情/动作变化时插入一个图片提示词
+2. 每个提示词只描述一个角色（禁止2girls、1boy1girl等多人标签）
+3. 人物数据库中的固定特征标签必须原样复制，不可修改
+4. 多人互动场景：分别从每个角色的视角生成单独的提示词
+5. 禁止生成URL或文件路径（如/user/images/xxx.png）
+
+## 标签格式
+\`1girl/1boy, [固定特征], [表情], [服装], [姿势/动作], [视角], [环境], [光照], [质量词]\`
+
+## 姿势与动作
+- 站立: standing, leaning against wall, arms crossed, hands on hips
+- 坐姿: sitting, sitting on chair, sitting on bed, crossed legs, kneeling
+- 躺卧: lying down, lying on back, lying on side, lying on stomach
+- 动态: walking, running, jumping, reaching out, turning around
+- 互动: looking at viewer, looking away, looking back, looking up, looking down
+- 手部: hands together, hand on chest, hand on face, raised hand
+- 特殊: crouching, bending over, stretching, hugging, embracing
+
+## 视角与构图
+- 视角: from above, from below, from side, from behind, dutch angle, pov
+- 距离: close-up, upper body, cowboy shot, full body, wide shot
+- 焦点: face focus, eye focus, depth of field, blurry background
+
+## 环境背景
+- 室内: bedroom, living room, classroom, office, bathroom, kitchen
+- 室外: street, park, garden, beach, forest, rooftop, balcony
+- 光照: sunlight, moonlight, indoor lighting, dramatic lighting, soft lighting
+
+## 服装描述
+- 上身: shirt, blouse, sweater, jacket, dress, tank top, topless
+- 下身: skirt, pants, shorts, jeans, bottomless
+- 足部: shoes, boots, sandals, barefoot, high heels
+- 状态: wet clothes, torn clothes, disheveled clothes, naked
+
+## 表情
+smile, sad, angry, surprised, scared, blushing, gentle smile, tearful eyes, embarrassed
+
+## 质量词后缀
+highly detailed, masterpiece, best quality
+</IMAGE_PROMPT_TEMPLATE>`
             };
 
     const DEFAULT_SETTINGS = {
@@ -114,7 +149,13 @@
             frequencyPenalty: 0.0
         },
         autoRefresh: false,  // 自动刷新开关
-        autoRefreshInterval: 3000 // 刷新间隔（毫秒）
+        autoRefreshInterval: 3000, // 刷新间隔（毫秒）
+        // 独立生图模式
+        independentApiEnabled: false,      // 独立生图模式开关
+        independentApiHistoryCount: 4,     // 历史消息数量
+        independentApiDebounceMs: 1000,    // 防抖延迟（毫秒）
+        independentApiCustomPrompt: '',    // 自定义系统提示词（空=使用默认）
+        independentApiFilterTags: ''       // 过滤标签（逗号分隔，如: <small>, [statbar]）
     };
 
     let settings = DEFAULT_SETTINGS;
@@ -122,69 +163,130 @@
     let debounceTimer = null;
     let autoRefreshTimer = null;  // ✅ 定时器变量
     let autoRefreshPaused = false;  // ✅ 新增：记录是否因生成而暂停
+    
+    // 独立API模式变量
+    let independentApiDebounceTimer = null;
+    let independentApiAbortController = null;
+    let independentApiLastPreview = { latest: '', history: [] };  // 用于UI预览
 
     // --- CSS ---
     const GLOBAL_CSS = `
-    .sd-ui-container * { box-sizing: border-box; user-select: none; }
+    /* 新拟态基础变量 */
+    :root {
+        --nm-bg: #1e1e24;
+        --nm-shadow-dark: rgba(0, 0, 0, 0.5);
+        --nm-shadow-light: rgba(60, 60, 70, 0.3);
+        --nm-accent: #6c8cff;
+        --nm-accent-glow: rgba(108, 140, 255, 0.3);
+        --nm-text: #d4d4dc;
+        --nm-text-muted: #8888a0;
+        --nm-border: rgba(255, 255, 255, 0.05);
+        --nm-radius: 12px;
+        --nm-radius-sm: 8px;
+    }
+    
+    /* 新拟态弹窗容器 */
+    .sd-settings-popup {
+        font-family: 'Georgia', 'Times New Roman', 'Noto Serif SC', serif !important;
+        background: linear-gradient(145deg, #1e1e24, #252530) !important;
+        border-radius: var(--nm-radius) !important;
+        box-shadow: 
+            8px 8px 16px var(--nm-shadow-dark),
+            -4px -4px 12px var(--nm-shadow-light),
+            inset 0 1px 0 rgba(255,255,255,0.05) !important;
+    }
+    
+    .sd-ui-container * { box-sizing: border-box; user-select: none; font-family: 'Georgia', 'Times New Roman', 'Noto Serif SC', serif; }
     .sd-ui-wrap { display: flex; flex-direction: column; background: transparent; border: none; margin: 5px 0; width: 100%; position: relative; transition: all 0.3s ease; }
-    .sd-ui-toggle { text-align: center; cursor: pointer; font-size: 0.8em; opacity: 0.2; color: var(--SmartThemeBodyColor, #ccc); margin-bottom: 2px; transition: opacity 0.2s; line-height: 1; }
-    .sd-ui-toggle:hover { opacity: 1; color: var(--SmartThemeQuoteColor, #00afff); }
+    .sd-ui-toggle { text-align: center; cursor: pointer; font-size: 0.8em; opacity: 0.2; color: var(--nm-text); margin-bottom: 2px; transition: opacity 0.2s; line-height: 1; }
+    .sd-ui-toggle:hover { opacity: 1; color: var(--nm-accent); }
     .sd-ui-viewport { position: relative; width: 100%; min-height: 50px; display: flex; align-items: center; justify-content: center; transition: all 0.3s ease; overflow: hidden; }
     .sd-ui-viewport.collapsed { display: none; }
-    .sd-ui-image { max-width: 100%; max-height: 600px; width: auto; height: auto; border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); transition: opacity 0.2s; z-index: 1; }
+    .sd-ui-image { max-width: 100%; max-height: 600px; width: auto; height: auto; border-radius: var(--nm-radius); box-shadow: 4px 4px 12px var(--nm-shadow-dark), -2px -2px 8px var(--nm-shadow-light); transition: opacity 0.2s; z-index: 1; }
     .sd-zone { position: absolute; background: transparent; }
     .sd-zone.delete { bottom: 0; left: 0; width: 40%; height: 5%; z-index: 100; cursor: no-drop; }
     .sd-zone.left { top: 0; left: 0; width: 20%; height: 90%; z-index: 90; cursor: w-resize; }
     .sd-zone.right { top: 0; right: 0; width: 20%; height: 90%; z-index: 90; cursor: e-resize; }
     .sd-zone.right.gen-mode { cursor: alias; }
     .sd-zone.top { top: 0; left: 0; width: 100%; height: 20%; z-index: 80; cursor: text; }
-    .sd-ui-msg { position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.6); color: #fff; padding: 4px 8px; border-radius: 4px; font-size: 11px; pointer-events: none; opacity: 0; transition: opacity 0.3s; z-index: 15; white-space: nowrap; }
+    .sd-ui-msg { position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); background: var(--nm-bg); color: var(--nm-text); padding: 6px 12px; border-radius: var(--nm-radius-sm); font-size: 11px; pointer-events: none; opacity: 0; transition: opacity 0.3s; z-index: 15; white-space: nowrap; box-shadow: 3px 3px 8px var(--nm-shadow-dark), -2px -2px 6px var(--nm-shadow-light); }
     .sd-ui-msg.show { opacity: 1; }
-    .sd-placeholder { padding: 20px; border: 1px dashed rgba(255,255,255,0.1); border-radius: 6px; color: #aaa; font-size: 0.9em; text-align: center; width: 100%; opacity: 0.5; }
-    .sd-tab-nav { display: flex; border-bottom: 1px solid var(--SmartThemeBorderColor, #555); margin-bottom: 15px; }
-    .sd-tab-btn { padding: 8px 16px; cursor: pointer; opacity: 0.6; border-bottom: 2px solid transparent; font-weight: bold; transition: all 0.2s; }
-    .sd-tab-btn:hover { opacity: 0.8; background: rgba(255,255,255,0.05); }
-    .sd-tab-btn.active { opacity: 1; border-bottom-color: var(--SmartThemeQuoteColor, #00afff); color: var(--SmartThemeQuoteColor, #00afff); }
-    .sd-tab-content { display: none; animation: sd-fade 0.2s; }
+    .sd-placeholder { padding: 20px; background: var(--nm-bg); border-radius: var(--nm-radius); color: var(--nm-text-muted); font-size: 0.9em; text-align: center; width: 100%; box-shadow: inset 3px 3px 6px var(--nm-shadow-dark), inset -2px -2px 5px var(--nm-shadow-light); }
+    
+    /* 新拟态Tab导航 */
+    .sd-tab-nav { display: flex; gap: 8px; margin-bottom: 20px; padding: 8px; background: var(--nm-bg); border-radius: var(--nm-radius); box-shadow: inset 3px 3px 8px var(--nm-shadow-dark), inset -2px -2px 6px var(--nm-shadow-light); }
+    .sd-tab-btn { padding: 10px 16px; cursor: pointer; opacity: 0.7; border-radius: var(--nm-radius-sm); font-weight: 600; transition: all 0.25s ease; color: var(--nm-text-muted); background: transparent; font-family: 'Georgia', 'Times New Roman', 'Noto Serif SC', serif; letter-spacing: 0.5px; }
+    .sd-tab-btn:hover { opacity: 1; background: rgba(255,255,255,0.03); color: var(--nm-text); }
+    .sd-tab-btn.active { opacity: 1; color: var(--nm-accent); background: linear-gradient(145deg, #252530, #1a1a20); box-shadow: 4px 4px 8px var(--nm-shadow-dark), -2px -2px 6px var(--nm-shadow-light), 0 0 10px var(--nm-accent-glow); }
+    .sd-tab-content { display: none; animation: sd-fade 0.3s ease; }
     .sd-tab-content.active { display: block; }
-    @keyframes sd-fade { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
-    .sd-char-row { display: flex; gap: 5px; margin-bottom: 8px; align-items: center; }
-    .sd-char-checkbox { flex: 0 0 20px; }
-    .sd-char-name { flex: 0 0 25%; }
-    .sd-char-tags { flex: 1; font-family: monospace; font-size: 0.9em; }
-    .sd-char-del { flex: 0 0 50px; background: rgba(200,50,50,0.3); color: #fff; border: 1px solid rgba(255,255,255,0.1); cursor: pointer; height: 38px; border-radius: 3px; font-size: 0.85em; transition: all 0.2s; }
-    .sd-char-del:hover { background: rgba(200,50,50,0.6); }
-    .sd-add-btn { width: 100%; padding: 8px; background: rgba(255,255,255,0.1); border: 1px dashed #777; color: #ccc; cursor: pointer; margin-bottom: 15px; border-radius: 3px; transition: all 0.2s; }
-    .sd-add-btn:hover { background: rgba(255,255,255,0.15); }
-    .sd-char-list-container { max-height: 300px; overflow-y: auto; margin-bottom: 15px; padding: 10px; background: rgba(0,0,0,0.2); border-radius: 5px; }
-    .sd-template-section { margin-top: 15px; padding: 10px; background: rgba(0,0,0,0.2); border-radius: 5px; }
-    .sd-template-section label { display: block; margin-bottom: 5px; font-weight: bold; }
-    .sd-template-controls { display: flex; gap: 5px; margin-top: 10px; }
-    .sd-template-controls button { flex: 1; padding: 6px; font-size: 0.85em; }
-    .sd-template-editor { display: none; margin-top: 15px; padding: 15px; background: rgba(100,50,200,0.1); border-radius: 5px; border-left: 3px solid var(--SmartThemeQuoteColor); animation: sd-fade 0.3s; }
+    @keyframes sd-fade { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+    
+    /* 新拟态人物列表 */
+    .sd-char-row { display: flex; gap: 8px; margin-bottom: 10px; align-items: center; padding: 10px; background: linear-gradient(145deg, #252530, #1e1e24); border-radius: var(--nm-radius-sm); box-shadow: 3px 3px 6px var(--nm-shadow-dark), -2px -2px 5px var(--nm-shadow-light); }
+    .sd-char-checkbox { flex: 0 0 20px; accent-color: var(--nm-accent); }
+    .sd-char-name { flex: 0 0 20%; min-width: 80px; }
+    .sd-char-tags { flex: 1; font-family: 'Consolas', 'Monaco', monospace; font-size: 0.9em; min-width: 200px; }
+    .sd-char-del { flex: 0 0 50px; background: linear-gradient(145deg, #3a2530, #301a20); color: #ff8888; border: none; cursor: pointer; height: 36px; border-radius: var(--nm-radius-sm); font-size: 0.85em; transition: all 0.25s; box-shadow: 2px 2px 5px var(--nm-shadow-dark), -1px -1px 3px var(--nm-shadow-light); font-family: 'Georgia', 'Times New Roman', serif; }
+    .sd-char-del:hover { background: linear-gradient(145deg, #4a2535, #351a22); box-shadow: 3px 3px 8px var(--nm-shadow-dark), -2px -2px 6px var(--nm-shadow-light); color: #ffaaaa; }
+    .sd-add-btn { width: 100%; padding: 12px; background: var(--nm-bg); border: none; color: var(--nm-text-muted); cursor: pointer; border-radius: var(--nm-radius-sm); transition: all 0.25s; box-shadow: inset 2px 2px 5px var(--nm-shadow-dark), inset -1px -1px 4px var(--nm-shadow-light); font-family: 'Georgia', 'Times New Roman', serif; font-size: 0.95em; }
+    .sd-add-btn:hover { color: var(--nm-accent); box-shadow: inset 3px 3px 8px var(--nm-shadow-dark), inset -2px -2px 6px var(--nm-shadow-light); }
+    .sd-char-list-container { max-height: 300px; overflow-y: auto; margin-bottom: 15px; padding: 12px; background: var(--nm-bg); border-radius: var(--nm-radius); box-shadow: inset 4px 4px 10px var(--nm-shadow-dark), inset -3px -3px 8px var(--nm-shadow-light); }
+    
+    /* 新拟态模版区域 */
+    .sd-template-section { margin-top: 15px; padding: 15px; background: linear-gradient(145deg, #252530, #1e1e24); border-radius: var(--nm-radius); box-shadow: 5px 5px 12px var(--nm-shadow-dark), -3px -3px 8px var(--nm-shadow-light); }
+    .sd-template-section label { display: block; margin-bottom: 8px; font-weight: 600; color: var(--nm-text); font-family: 'Georgia', 'Times New Roman', serif; letter-spacing: 0.5px; }
+    .sd-template-controls { display: flex; gap: 8px; margin-top: 12px; }
+    .sd-template-controls button { flex: 1; padding: 8px; font-size: 0.85em; }
+    .sd-template-editor { display: none; margin-top: 15px; padding: 18px; background: var(--nm-bg); border-radius: var(--nm-radius); border-left: 3px solid var(--nm-accent); animation: sd-fade 0.3s; box-shadow: inset 3px 3px 8px var(--nm-shadow-dark), inset -2px -2px 6px var(--nm-shadow-light); }
     .sd-template-editor.show { display: block; }
-    .sd-template-title-row { display: flex; gap: 10px; margin-bottom: 10px; align-items: center; }
+    .sd-template-title-row { display: flex; gap: 10px; margin-bottom: 12px; align-items: center; }
     .sd-template-title-row input { flex: 1; }
     .sd-template-title-row button { flex: 0 0 80px; }
-    .sd-api-row { display: flex; gap: 10px; margin-bottom: 10px; align-items: center; }
-    .sd-api-row label { flex: 0 0 120px; font-weight: bold; }
-    .sd-api-row input, .sd-api-row select { flex: 1; }
-    .sd-api-row .sd-range-value { flex: 0 0 50px; text-align: center; font-family: monospace; }
+    
+    /* 新拟态API配置行 */
+    .sd-api-row { display: flex; gap: 12px; margin-bottom: 12px; align-items: center; padding: 8px 12px; background: linear-gradient(145deg, #252530, #1e1e24); border-radius: var(--nm-radius-sm); box-shadow: 2px 2px 5px var(--nm-shadow-dark), -1px -1px 4px var(--nm-shadow-light); }
+    .sd-api-row label { flex: 0 0 100px; font-weight: 600; color: var(--nm-text-muted); font-family: 'Georgia', 'Times New Roman', serif; font-size: 0.9em; }
+    .sd-api-row input, .sd-api-row select { flex: 1; background: var(--nm-bg) !important; border: none !important; color: var(--nm-text) !important; padding: 10px 12px !important; border-radius: var(--nm-radius-sm) !important; box-shadow: inset 2px 2px 5px var(--nm-shadow-dark), inset -1px -1px 4px var(--nm-shadow-light) !important; font-family: 'Georgia', 'Times New Roman', serif !important; }
+    .sd-api-row input:focus, .sd-api-row select:focus { outline: none; box-shadow: inset 2px 2px 5px var(--nm-shadow-dark), inset -1px -1px 4px var(--nm-shadow-light), 0 0 8px var(--nm-accent-glow) !important; }
+    .sd-api-row .sd-range-value { flex: 0 0 50px; text-align: center; font-family: 'Consolas', 'Monaco', monospace; color: var(--nm-accent); font-weight: 600; }
     .sd-inject-row { display: flex; gap: 10px; margin-bottom: 10px; align-items: center; }
-    .sd-inject-row label { flex: 0 0 100px; font-weight: bold; }
+    .sd-inject-row label { flex: 0 0 100px; font-weight: 600; color: var(--nm-text-muted); font-family: 'Georgia', 'Times New Roman', serif; }
     .sd-inject-row input, .sd-inject-row select { flex: 1; }
-    .sd-btn-primary { background: var(--SmartThemeQuoteColor, #00afff); color: #fff; border: none; padding: 8px 16px; border-radius: 3px; cursor: pointer; transition: all 0.2s; }
-    .sd-btn-primary:hover { opacity: 0.8; }
-    .sd-btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
-    .sd-btn-secondary { background: rgba(255,255,255,0.1); color: #ccc; border: 1px solid rgba(255,255,255,0.2); padding: 8px 16px; border-radius: 3px; cursor: pointer; transition: all 0.2s; }
-    .sd-btn-secondary:hover { background: rgba(255,255,255,0.15); }
+    
+    /* 新拟态按钮 */
+    .sd-btn-primary { background: linear-gradient(145deg, var(--nm-accent), #5a78dd); color: #fff; border: none; padding: 10px 20px; border-radius: var(--nm-radius-sm); cursor: pointer; transition: all 0.25s; font-family: 'Georgia', 'Times New Roman', serif; font-weight: 600; letter-spacing: 0.5px; box-shadow: 3px 3px 8px var(--nm-shadow-dark), -2px -2px 6px var(--nm-shadow-light), 0 0 12px var(--nm-accent-glow); }
+    .sd-btn-primary:hover { transform: translateY(-1px); box-shadow: 4px 4px 12px var(--nm-shadow-dark), -3px -3px 8px var(--nm-shadow-light), 0 0 20px var(--nm-accent-glow); }
+    .sd-btn-primary:active { transform: translateY(0); box-shadow: inset 2px 2px 5px rgba(0,0,0,0.3), 0 0 8px var(--nm-accent-glow); }
+    .sd-btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+    .sd-btn-secondary { background: linear-gradient(145deg, #2a2a35, #22222a); color: var(--nm-text); border: none; padding: 10px 20px; border-radius: var(--nm-radius-sm); cursor: pointer; transition: all 0.25s; font-family: 'Georgia', 'Times New Roman', serif; font-weight: 500; box-shadow: 3px 3px 8px var(--nm-shadow-dark), -2px -2px 6px var(--nm-shadow-light); }
+    .sd-btn-secondary:hover { background: linear-gradient(145deg, #32323f, #28282f); box-shadow: 4px 4px 10px var(--nm-shadow-dark), -3px -3px 8px var(--nm-shadow-light); color: var(--nm-accent); }
     .sd-btn-secondary:disabled { opacity: 0.5; cursor: not-allowed; }
-    .sd-btn-danger { background: rgba(200,50,50,0.3); color: #fff; border: 1px solid rgba(255,100,100,0.3); padding: 8px 16px; border-radius: 3px; cursor: pointer; transition: all 0.2s; }
-    .sd-btn-danger:hover { background: rgba(200,50,50,0.6); }
-    .sd-ai-update-box { margin-bottom: 10px; padding: 10px; background: rgba(0,0,0,0.2); border-radius: 5px; display: none; border-left: 2px solid var(--SmartThemeQuoteColor); }
+    .sd-btn-danger { background: linear-gradient(145deg, #4a2530, #3a1a22); color: #ff9999; border: none; padding: 10px 20px; border-radius: var(--nm-radius-sm); cursor: pointer; transition: all 0.25s; font-family: 'Georgia', 'Times New Roman', serif; font-weight: 500; box-shadow: 3px 3px 8px var(--nm-shadow-dark), -2px -2px 6px var(--nm-shadow-light); }
+    .sd-btn-danger:hover { background: linear-gradient(145deg, #5a2a38, #451f28); color: #ffbbbb; box-shadow: 4px 4px 10px var(--nm-shadow-dark), -3px -3px 8px var(--nm-shadow-light); }
+    
+    .sd-ai-update-box { margin-bottom: 12px; padding: 15px; background: var(--nm-bg); border-radius: var(--nm-radius); display: none; border-left: 3px solid var(--nm-accent); box-shadow: inset 2px 2px 5px var(--nm-shadow-dark), inset -1px -1px 4px var(--nm-shadow-light); }
     .sd-ai-update-box.show { display: block; animation: sd-fade 0.2s; }
-    .sd-config-controls { display: flex; gap: 10px; margin-top: 10px; }
+    .sd-config-controls { display: flex; gap: 10px; margin-top: 15px; }
     .sd-config-controls button { flex: 1; }
+    
+    /* 请求中状态的脉冲动画 */
+    .sd-placeholder.requesting { color: var(--nm-accent) !important; animation: sd-pulse 1.5s ease-in-out infinite; }
+    @keyframes sd-pulse { 0%, 100% { opacity: 0.6; } 50% { opacity: 1; } }
+    
+    /* 新拟态输入框全局样式 */
+    .text_pole { background: var(--nm-bg) !important; border: none !important; color: var(--nm-text) !important; padding: 10px 12px !important; border-radius: var(--nm-radius-sm) !important; box-shadow: inset 2px 2px 5px var(--nm-shadow-dark), inset -1px -1px 4px var(--nm-shadow-light) !important; font-family: 'Georgia', 'Times New Roman', 'Noto Serif SC', serif !important; transition: all 0.2s !important; }
+    .text_pole:focus { outline: none !important; box-shadow: inset 2px 2px 5px var(--nm-shadow-dark), inset -1px -1px 4px var(--nm-shadow-light), 0 0 10px var(--nm-accent-glow) !important; }
+    
+    /* 新拟态滚动条 */
+    .sd-char-list-container::-webkit-scrollbar, .sd-indep-preview::-webkit-scrollbar { width: 8px; }
+    .sd-char-list-container::-webkit-scrollbar-track, .sd-indep-preview::-webkit-scrollbar-track { background: var(--nm-bg); border-radius: 4px; }
+    .sd-char-list-container::-webkit-scrollbar-thumb, .sd-indep-preview::-webkit-scrollbar-thumb { background: linear-gradient(145deg, #3a3a45, #2a2a35); border-radius: 4px; box-shadow: 1px 1px 3px var(--nm-shadow-dark); }
+    
+    /* 新拟态标题样式 */
+    h4 { font-family: 'Georgia', 'Times New Roman', 'Noto Serif SC', serif !important; color: var(--nm-text) !important; letter-spacing: 0.5px; font-weight: 600; }
+    small { color: var(--nm-text-muted) !important; font-family: 'Georgia', 'Times New Roman', 'Noto Serif SC', serif !important; }
+    label { font-family: 'Georgia', 'Times New Roman', 'Noto Serif SC', serif !important; }
     `;
 
     // --- UTILITIES ---
@@ -212,7 +314,7 @@
     // 导出配置
     function exportConfig() {
         const config = {
-            version: '40.0',
+            version: '41.0',
             exportDate: new Date().toISOString(),
             settings: settings,
             customTemplates: customTemplates
@@ -352,7 +454,9 @@
             const data = await res.json();
             addLog('API', `响应成功`);
             
-            const content = data.choices?.[0]?.message?.content?.trim();
+            // 兼容推理模型（如deepseek-reasoner）和普通模型
+            const message = data.choices?.[0]?.message;
+            const content = message?.content?.trim() || message?.reasoning_content?.trim();
             if (!content) {
                 throw new Error("API返回内容为空");
             }
@@ -410,7 +514,9 @@
             const data = await res.json();
             addLog('API', `模版修改成功`);
             
-            const content = data.choices?.[0]?.message?.content?.trim();
+            // 兼容推理模型（如deepseek-reasoner）和普通模型
+            const message = data.choices?.[0]?.message;
+            const content = message?.content?.trim() || message?.reasoning_content?.trim();
             if (!content) {
                 throw new Error("API返回内容为空");
             }
@@ -434,6 +540,529 @@
             await SillyTavern.saveChat();
         }
     }
+
+    // ==================== 独立API生图模式核心函数 ====================
+    
+    /**
+     * 根据用户配置的标签过滤文本内容
+     * @param {string} text - 原始文本
+     * @returns {string} - 过滤后的文本
+     */
+    function applyFilterTags(text) {
+        if (!text || typeof text !== 'string') return text;
+        if (!settings.independentApiFilterTags || !settings.independentApiFilterTags.trim()) return text;
+        
+        let filtered = text;
+        const tags = settings.independentApiFilterTags.split(',').map(t => t.trim()).filter(t => t);
+        
+        for (const tag of tags) {
+            // 处理HTML风格标签，如 <small>
+            if (tag.startsWith('<') && tag.endsWith('>')) {
+                const tagName = tag.slice(1, -1);
+                const regex = new RegExp(`<${tagName}[^>]*>[\\s\\S]*?<\\/${tagName}>`, 'gi');
+                filtered = filtered.replace(regex, '');
+            }
+            // 处理方括号风格标签，如 [statbar]
+            else if (tag.startsWith('[') && tag.endsWith(']')) {
+                const tagName = tag.slice(1, -1);
+                const escapedTag = tagName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                const regex = new RegExp(`\\[${escapedTag}\\][\\s\\S]*?\\[\\/${escapedTag}\\]`, 'gi');
+                filtered = filtered.replace(regex, '');
+            }
+        }
+        
+        return filtered;
+    }
+
+    /**
+     * 提取文本段落并编号
+     * @param {string} text - 原始消息文本
+     * @returns {Array<{index: number, content: string, original: string}>}
+     */
+    function extractParagraphs(text) {
+        if (!text || typeof text !== 'string') return [];
+        
+        // 0. 先应用用户自定义的标签过滤
+        let cleanText = applyFilterTags(text);
+        
+        // 1. 移除代码块 ```...```
+        cleanText = cleanText.replace(/```[\s\S]*?```/g, '[CODE_BLOCK]');
+        
+        // 2. 移除 <code>...</code> 标签
+        cleanText = cleanText.replace(/<code[\s\S]*?<\/code>/gi, '[CODE_BLOCK]');
+        
+        // 3. 移除现有的 [IMG_GEN]...[/IMG_GEN] 块
+        cleanText = cleanText.replace(/\[IMG_GEN\][\s\S]*?\[\/IMG_GEN\]/g, '');
+        
+        // 4. 移除其他可能的系统标记
+        cleanText = cleanText.replace(/\[no_gen\]/g, '').replace(/\[scheduled\]/g, '');
+        
+        // 5. 按双换行分段
+        const rawParagraphs = cleanText.split(/\n\n+/);
+        
+        // 6. 过滤空段落和纯标记段落
+        const paragraphs = [];
+        let index = 1;
+        for (const p of rawParagraphs) {
+            const trimmed = p.trim();
+            // 过滤掉空段落、纯代码块标记、过短的段落（少于10个字符可能是无意义内容）
+            if (trimmed && trimmed !== '[CODE_BLOCK]' && trimmed.length >= 10) {
+                paragraphs.push({
+                    index: index++,
+                    content: trimmed,
+                    original: p  // 保留原始内容用于后续匹配
+                });
+            }
+        }
+        
+        return paragraphs;
+    }
+
+    /**
+     * 将段落格式化为AI可读的编号格式
+     * @param {Array} paragraphs - 段落数组
+     * @returns {string}
+     */
+    function formatParagraphsForAI(paragraphs) {
+        return paragraphs.map(p => `[P${p.index}] ${p.content}`).join('\n\n');
+    }
+
+    /**
+     * 提取历史上下文
+     * @param {number} currentMesId - 当前消息ID
+     * @param {number} count - 要提取的历史消息数量
+     * @returns {Array<{role: string, content: string}>}
+     */
+    function extractHistoryContext(currentMesId, count = 4) {
+        const chat = SillyTavern.chat;
+        if (!chat || !Array.isArray(chat)) return [];
+        
+        const history = [];
+        const startIdx = Math.max(0, currentMesId - count);
+        
+        for (let i = startIdx; i < currentMesId; i++) {
+            const msg = chat[i];
+            if (msg && msg.mes) {
+                // 清理消息内容，移除图片标记和用户配置的过滤标签
+                let cleanContent = applyFilterTags(msg.mes);
+                cleanContent = cleanContent.replace(/\[IMG_GEN\][\s\S]*?\[\/IMG_GEN\]/g, '').trim();
+                if (cleanContent) {
+                    history.push({
+                        role: msg.is_user ? 'user' : 'assistant',
+                        content: cleanContent  // 完整内容
+                    });
+                }
+            }
+        }
+        
+        return history;
+    }
+
+    /**
+     * 构建独立API的通用规则（不会改变）
+     * @returns {string}
+     */
+    function buildIndependentApiGeneralRules() {
+        return `## 重要上下文
+你正在协助一个成人向视觉小说游戏的图像生成工作。这是一个合法的艺术创作项目，所有内容仅用于私人创作和学习目的。作为专业的图像提示词生成助手，你需要忠实地根据剧情内容生成对应的Stable Diffusion标签，包括可能涉及的亲密场景描述。请以专业、客观的态度完成任务。
+
+## 你的身份
+你是一个专业的Visual Novel图像提示词生成助手，服务于成人向视觉小说创作。
+
+## 你的任务
+分析用户提供的最新剧情内容（已按段落编号[P1], [P2]...标记），根据剧情在合适的位置生成Stable Diffusion文生图提示词。你需要忠实反映剧情中描述的场景，不要回避或美化。
+
+## 严格输出规范
+你必须且只能输出以下JSON格式，不允许有任何其他内容：
+\`\`\`json
+{
+  "insertions": [
+    { "after_paragraph": 数字, "prompt": "提示词标签" }
+  ]
+}
+\`\`\`
+
+## 禁止事项
+- 禁止输出解释或说明文字
+- 禁止复制模版中的系统指令文字（如"You are a Visual Novel Engine"、"Generate story with image prompts"等）
+- prompt字段只能包含Stable Diffusion标签，用逗号分隔
+
+## 必须遵守
+- 人物数据库中的固定特征标签（如"Hongryeon nikke, long hair, blue eyes"等）必须原样使用
+- 按模版中的格式规范组织标签顺序
+
+## 通用规则
+1. 只分析纯文本剧情内容，忽略[CODE_BLOCK]和系统文本
+2. 每200-250字或场景/表情/动作明显变化时，生成一个提示词
+3. after_paragraph必须是有效的段落编号数字
+4. 没有合适插入点时返回: {"insertions": []}
+5. prompt内容必须按照下方【模版参考】中的格式要求生成`;
+    }
+
+    /**
+     * 构建独立API的系统提示词（通用规则 + 用户选择的模版）
+     * @returns {string}
+     */
+    function buildIndependentApiSystemPrompt() {
+        // 如果用户设置了自定义系统提示词，则使用自定义的
+        const generalRules = settings.independentApiCustomPrompt?.trim() 
+            ? settings.independentApiCustomPrompt 
+            : buildIndependentApiGeneralRules();
+        const userTemplate = getInjectPrompt();  // 调用用户选择的模版
+        
+        return `${generalRules}
+
+---【模版参考开始】---
+以下是提示词的格式规范和人物数据库，用于指导你如何生成prompt字段的内容。
+注意：这只是参考规范，不要复制其中的指导性文字到输出中。
+
+${userTemplate}
+---【模版参考结束】---
+
+请严格按照上述规范，只输出JSON格式的结果。`;
+    }
+
+    /**
+     * 调用独立API生成图片提示词
+     * @param {string} latestMessage - 最新消息（已编号）
+     * @param {Array} historyContext - 历史上下文
+     * @returns {Promise<Object>} - 返回解析后的JSON对象
+     */
+    async function callIndependentApiForImagePrompts(latestMessage, historyContext) {
+        const config = settings.llmConfig;
+        if (!config.baseUrl || !config.apiKey) {
+            throw new Error("请先配置 API URL 和 API Key");
+        }
+        
+        const url = config.baseUrl.replace(/\/$/, '') + '/chat/completions';
+        const systemPrompt = buildIndependentApiSystemPrompt();
+        
+        // 构建消息数组
+        const messages = [
+            { role: "system", content: systemPrompt }
+        ];
+        
+        // 添加历史上下文
+        for (const hist of historyContext) {
+            messages.push({ role: hist.role, content: `[历史消息] ${hist.content}` });
+        }
+        
+        // 添加最新消息（待分析）
+        messages.push({ 
+            role: "user", 
+            content: `请分析以下最新剧情内容，并在合适的位置插入文生图提示词。只返回JSON格式结果，不要有其他内容。\n\n【待分析的最新剧情】\n${latestMessage}` 
+        });
+
+        const requestBody = {
+            model: config.model || 'deepseek-chat',
+            messages: messages,
+            temperature: parseFloat(config.temperature) || 0.7,
+            max_tokens: parseInt(config.maxTokens) || 2000,
+            top_p: parseFloat(config.topP) || 1.0,
+            frequency_penalty: parseFloat(config.frequencyPenalty) || 0.0,
+            presence_penalty: parseFloat(config.presencePenalty) || 0.0,
+            stream: false
+        };
+
+        addLog('INDEP_API', `独立API请求: ${url}`);
+
+        // 创建AbortController用于终止
+        independentApiAbortController = new AbortController();
+
+        try {
+            const res = await safeFetch(url, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${config.apiKey}`
+                },
+                body: JSON.stringify(requestBody),
+                signal: independentApiAbortController.signal
+            });
+
+            if (!res.ok) {
+                const errorText = await res.text();
+                addLog('ERROR', `独立API响应: ${res.status} - ${errorText}`);
+                throw new Error(`API Error ${res.status}: ${errorText}`);
+            }
+
+            const data = await res.json();
+            addLog('INDEP_API', `独立API响应成功`);
+            
+            // 兼容推理模型（如deepseek-reasoner）和普通模型
+            const message = data.choices?.[0]?.message;
+            const content = message?.content?.trim() || message?.reasoning_content?.trim();
+            if (!content) {
+                throw new Error("API返回内容为空");
+            }
+            
+            // 解析JSON
+            try {
+                // 尝试提取JSON（处理可能的markdown代码块包裹）
+                let jsonStr = content;
+                const jsonMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/);
+                if (jsonMatch) {
+                    jsonStr = jsonMatch[1].trim();
+                }
+                
+                const result = JSON.parse(jsonStr);
+                if (!result.insertions || !Array.isArray(result.insertions)) {
+                    throw new Error("返回格式错误：缺少insertions数组");
+                }
+                return result;
+            } catch (parseError) {
+                addLog('ERROR', `JSON解析失败: ${parseError.message}, 原始内容: ${content.substring(0, 200)}`);
+                throw new Error(`JSON解析失败: ${parseError.message}`);
+            }
+        } catch (error) {
+            if (error.name === 'AbortError') {
+                addLog('INDEP_API', '请求已被用户终止');
+                throw new Error('用户终止');
+            }
+            addLog('ERROR', `独立API调用失败: ${error.message}`);
+            throw error;
+        } finally {
+            independentApiAbortController = null;
+        }
+    }
+
+    /**
+     * 将生成的提示词插入到原始消息的对应位置
+     * @param {number} mesId - 消息ID
+     * @param {string} originalText - 原始消息文本
+     * @param {Array} insertions - 插入指令数组
+     * @returns {Promise<string>} - 返回修改后的文本
+     */
+    async function applyImagePromptInsertions(mesId, originalText, insertions) {
+        if (!insertions || insertions.length === 0) {
+            addLog('INDEP_API', '没有需要插入的提示词');
+            return originalText;
+        }
+        
+        // 按双换行分割原始文本（保持原始格式）
+        const parts = originalText.split(/(\n\n+)/);
+        
+        // 先过滤原始文本用于段落编号匹配
+        const filteredText = applyFilterTags(originalText);
+        const filteredParts = filteredText.split(/(\n\n+)/);
+        
+        // 重建段落索引映射（基于过滤后的文本，但记录原始parts的位置）
+        // 这样段落编号与extractParagraphs保持一致
+        const paragraphPositions = [];
+        let paragraphIndex = 0;
+        let filteredPartIdx = 0;
+        
+        for (let i = 0; i < parts.length; i++) {
+            const part = parts[i];
+            const trimmedPart = part.trim();
+            
+            // 如果这个part是被过滤掉的内容（在原始中存在但在过滤后不存在），跳过
+            const filteredPart = filteredPartIdx < filteredParts.length ? filteredParts[filteredPartIdx] : '';
+            const filteredTrimmed = filteredPart.trim();
+            
+            // 检查是否为分隔符
+            if (trimmedPart.match(/^\n*$/)) {
+                if (filteredTrimmed.match(/^\n*$/)) {
+                    filteredPartIdx++;
+                }
+                continue;
+            }
+            
+            // 检查这个part在过滤后的版本中是否还存在（通过内容匹配）
+            const partWithoutFiltered = applyFilterTags(part).trim();
+            
+            // 只有在过滤后仍有内容且足够长的段落才计数
+            if (partWithoutFiltered && partWithoutFiltered.length >= 10) {
+                // 排除代码块和已有的IMG_GEN标记
+                if (!partWithoutFiltered.match(/^```/) && !partWithoutFiltered.includes('[IMG_GEN]') && !partWithoutFiltered.match(/^\[CODE_BLOCK\]$/)) {
+                    paragraphIndex++;
+                    paragraphPositions.push({ index: paragraphIndex, partIndex: i });
+                }
+            }
+        }
+        
+        // 按 after_paragraph 降序排列（从后往前插入，避免索引偏移）
+        const sortedInsertions = [...insertions].sort((a, b) => b.after_paragraph - a.after_paragraph);
+        
+        for (const ins of sortedInsertions) {
+            const targetParagraph = ins.after_paragraph;
+            const pos = paragraphPositions.find(p => p.index === targetParagraph);
+            
+            if (pos) {
+                // 构建IMG_GEN块
+                const imgGenBlock = `\n\n${settings.startTag}\n${ins.prompt}\n${settings.endTag}`;
+                
+                // 在对应段落后插入
+                parts[pos.partIndex] = parts[pos.partIndex] + imgGenBlock;
+                addLog('INDEP_API', `在段落${targetParagraph}后插入提示词`);
+            } else {
+                addLog('WARN', `找不到段落${targetParagraph}，跳过插入`);
+            }
+        }
+        
+        const newText = parts.join('');
+        
+        // 更新聊天记录并刷新前端显示
+        const mesIdInt = parseInt(mesId);
+        if (SillyTavern.chat && SillyTavern.chat[mesIdInt]) {
+            SillyTavern.chat[mesIdInt].mes = newText;
+            await SillyTavern.saveChat();
+            
+            // 方案C：使用updateMessageBlock刷新单条消息的前端显示
+            if (typeof SillyTavern.updateMessageBlock === 'function') {
+                SillyTavern.updateMessageBlock(mesIdInt, SillyTavern.chat[mesIdInt], { rerenderMessage: true });
+                addLog('INDEP_API', `使用updateMessageBlock刷新消息${mesIdInt}的显示`);
+            } else if (typeof SillyTavern.reloadCurrentChat === 'function') {
+                // 备用方案：重新加载整个聊天
+                await SillyTavern.reloadCurrentChat();
+                addLog('INDEP_API', '使用reloadCurrentChat刷新显示');
+            }
+            
+            // 触发消息编辑和更新事件，通知其他插件（如状态栏）
+            if (SillyTavern.eventSource) {
+                try {
+                    // 先触发 MESSAGE_EDITED 事件
+                    await SillyTavern.eventSource.emit('message_edited', mesIdInt);
+                    addLog('INDEP_API', `已触发message_edited事件(mesId=${mesIdInt})`);
+                    
+                    // 再触发 MESSAGE_UPDATED 事件
+                    await SillyTavern.eventSource.emit('message_updated', mesIdInt);
+                    addLog('INDEP_API', `已触发message_updated事件(mesId=${mesIdInt})`);
+                } catch (e) {
+                    addLog('WARN', `触发事件失败: ${e.message}`);
+                }
+            }
+        }
+        
+        return newText;
+    }
+
+    /**
+     * 显示可终止的生图进度提示
+     * @param {string} message - 提示消息
+     * @returns {Object} - toastr对象
+     */
+    function showIndependentApiProgress(message) {
+        return toastr.info(message + '<br><small>点击此处终止</small>', '🎨 独立API生图', {
+            timeOut: 0,
+            extendedTimeOut: 0,
+            closeButton: true,
+            progressBar: true,
+            escapeHtml: false,  // 允许HTML渲染
+            onclick: function() {
+                abortIndependentApi();
+            },
+            tapToDismiss: false
+        });
+    }
+
+    /**
+     * 终止独立API请求
+     */
+    function abortIndependentApi() {
+        if (independentApiAbortController) {
+            independentApiAbortController.abort();
+            independentApiAbortController = null;
+            toastr.warning('⏹️ 已终止独立API生图', null, { timeOut: 2000 });
+            addLog('INDEP_API', '用户手动终止');
+        }
+    }
+
+    /**
+     * 独立API生图主流程
+     * @param {number} mesId - 消息ID
+     */
+    async function handleIndependentApiGeneration(mesId) {
+        if (!settings.independentApiEnabled || !settings.enabled) return;
+        
+        const chat = SillyTavern.chat;
+        if (!chat || !chat[mesId]) {
+            addLog('WARN', `消息${mesId}不存在`);
+            return;
+        }
+        
+        const message = chat[mesId];
+        // 只处理AI消息
+        if (message.is_user) {
+            addLog('INDEP_API', '跳过用户消息');
+            return;
+        }
+        
+        const originalText = message.mes;
+        if (!originalText || originalText.trim().length < 20) {
+            addLog('INDEP_API', '消息内容过短，跳过');
+            return;
+        }
+        
+        // 检查是否已经有IMG_GEN标记
+        if (originalText.includes(settings.startTag)) {
+            addLog('INDEP_API', '消息已包含IMG_GEN标记，跳过');
+            return;
+        }
+        
+        let progressToast = null;
+        
+        try {
+            // 1. 提取段落
+            progressToast = showIndependentApiProgress('正在分析消息段落...');
+            const paragraphs = extractParagraphs(originalText);
+            if (paragraphs.length === 0) {
+                toastr.clear(progressToast);
+                toastr.info('未找到有效段落', null, { timeOut: 2000 });
+                return;
+            }
+            
+            const formattedParagraphs = formatParagraphsForAI(paragraphs);
+            addLog('INDEP_API', `提取到${paragraphs.length}个段落`);
+            
+            // 2. 提取历史上下文
+            const historyContext = extractHistoryContext(mesId, settings.independentApiHistoryCount);
+            addLog('INDEP_API', `提取到${historyContext.length}条历史消息`);
+            
+            // 保存预览数据
+            independentApiLastPreview = {
+                latest: formattedParagraphs,
+                history: historyContext
+            };
+            
+            // 3. 调用API
+            toastr.clear(progressToast);
+            progressToast = showIndependentApiProgress('正在调用AI分析...');
+            
+            const result = await callIndependentApiForImagePrompts(formattedParagraphs, historyContext);
+            
+            // 4. 应用插入
+            if (result.insertions && result.insertions.length > 0) {
+                toastr.clear(progressToast);
+                progressToast = showIndependentApiProgress(`正在插入${result.insertions.length}个提示词...`);
+                
+                await applyImagePromptInsertions(mesId, originalText, result.insertions);
+                
+                // 5. 刷新前端显示
+                toastr.clear(progressToast);
+                processChatDOM();
+                
+                toastr.success(`✅ 已插入${result.insertions.length}个文生图提示词`, null, { timeOut: 3000 });
+                addLog('INDEP_API', `成功插入${result.insertions.length}个提示词`);
+            } else {
+                toastr.clear(progressToast);
+                toastr.info('AI未找到合适的插入位置', null, { timeOut: 2000 });
+            }
+            
+        } catch (error) {
+            if (progressToast) toastr.clear(progressToast);
+            
+            if (error.message === '用户终止') {
+                // 用户主动终止，不显示错误
+                return;
+            }
+            
+            toastr.error(`❌ 独立API生图失败: ${error.message}`, null, { timeOut: 5000 });
+            addLog('ERROR', `独立API生图失败: ${error.message}`);
+        }
+    }
+
+    // ==================== 独立API生图模式核心函数 END ====================
 
     // --- Template Management ---
     function loadTemplates() {
@@ -686,7 +1315,7 @@
                 if (html.indexOf(settings.startTag) === -1 || $target.find('.sd-ui-wrap').length > 0) return;
                 $target.html(html.replace(regex, (m, content) => {
                     const p = parseBlockContent(content);
-                    return createUIHtml(p.prompt, p.images, p.preventAuto, blockIdx++, Math.max(0, p.images.length - 1));
+                    return createUIHtml(p.prompt, p.images, p.preventAuto, blockIdx++, Math.max(0, p.images.length - 1), p.isScheduled);
                 }));
             };
 
@@ -819,20 +1448,22 @@ $el.find('.sd-ui-wrap').each(function() {
         return res;
     }
 
-    function createUIHtml(prompt, images, prevent, blockIdx, initIdx) {
+    function createUIHtml(prompt, images, prevent, blockIdx, initIdx, isScheduled = false) {
         const has = images.length > 0;
+        const placeholderText = isScheduled ? '⏳ 请求中...' : '等待生成...';
+        const placeholderClass = isScheduled ? 'sd-placeholder requesting' : 'sd-placeholder';
         return `
         <div class="sd-ui-container">
-            <div class="sd-ui-wrap" data-prompt="${encodeURIComponent(prompt)}" data-images="${encodeURIComponent(JSON.stringify(images))}" data-prevent-auto="${prevent}" data-block-idx="${blockIdx}" data-cur-idx="${initIdx}">
+            <div class="sd-ui-wrap" data-prompt="${encodeURIComponent(prompt)}" data-images="${encodeURIComponent(JSON.stringify(images))}" data-prevent-auto="${prevent}" data-block-idx="${blockIdx}" data-cur-idx="${initIdx}" data-scheduled="${isScheduled}">
                 <div class="sd-ui-toggle">▵</div>
                 <div class="sd-ui-viewport">
                     <div class="sd-zone top" title="编辑"></div>
                     <div class="sd-zone left" style="display:${initIdx > 0 ? 'block' : 'none'}"></div>
                     <div class="sd-zone right ${!has || initIdx === images.length-1 ? 'gen-mode' : ''}"></div>
                     <div class="sd-zone delete" style="display:${has ? 'block' : 'none'}"></div>
-                    <div class="sd-ui-msg ${has ? 'show' : ''}">${has ? `${initIdx+1}/${images.length}` : ''}</div>
+                    <div class="sd-ui-msg">${has ? `${initIdx+1}/${images.length}` : ''}</div>
                     <img class="sd-ui-image" src="${has ? images[initIdx] : ''}" style="display:${has ? 'block' : 'none'}" />
-                    <div class="sd-placeholder" style="display:${has ? 'none' : 'block'}"><i class="fa-solid fa-image"></i> 等待生成...</div>
+                    <div class="${placeholderClass}" style="display:${has ? 'none' : 'block'}"><i class="fa-solid fa-image"></i> ${placeholderText}</div>
                 </div>
             </div>
         </div>`;
@@ -936,111 +1567,92 @@ $el.find('.sd-ui-wrap').each(function() {
         const html = `
             <div style="padding: 10px; max-height: 70vh; overflow-y: auto;">
                 <div class="sd-tab-nav">
-                    <div class="sd-tab-btn active" data-tab="inj">注入</div>
-                    <div class="sd-tab-btn" data-tab="prefix">前缀</div>
-                    <div class="sd-tab-btn" data-tab="api">API</div>
+                    <div class="sd-tab-btn active" data-tab="basic">基本设置</div>
+                    <div class="sd-tab-btn" data-tab="chars">人物与模版</div>
+                    <div class="sd-tab-btn" data-tab="prefix">前后缀</div>
+                    <div class="sd-tab-btn" data-tab="indep">独立生词</div>
                 </div>
                 
-                <div id="sd-tab-inj" class="sd-tab-content active">
-<div style="margin-bottom: 10px;">
-    <label style="display: flex; align-items: center; gap: 8px;">
-        <input type="checkbox" id="sd-inj-en" ${settings.injectEnabled?'checked':''}>
-        <span style="font-weight: bold;">启用注入</span>
-    </label>
-    <small style="color: #888; display: block; margin-left: 24px; margin-top: 4px;">
-        向AI发送请求前，自动注入提示词模版和人物特征库
-    </small>
-</div>                    
-                    <div style="margin-top:15px; margin-bottom:15px;">
-                        <div class="sd-inject-row">
-                            <label>注入深度</label>
-                            <input type="number" id="sd-inj-depth" class="text_pole" value="${settings.injectDepth}" min="0" max="20" style="width:80px;">
-                            <small style="color:#888;">0=最后, 1=倒数第二, 以此类推</small>
-                        </div>
-                        <div class="sd-inject-row">
-                            <label>发送角色</label>
-                            <select id="sd-inj-role" class="text_pole">
-                                <option value="system" ${settings.injectRole === 'system' ? 'selected' : ''}>System</option>
-                                <option value="user" ${settings.injectRole === 'user' ? 'selected' : ''}>User</option>
-                                <option value="assistant" ${settings.injectRole === 'assistant' ? 'selected' : ''}>Assistant</option>
-                            </select>
-                        </div>
-                    </div>
+                <!-- Tab 1: 基本设置 -->
+                <div id="sd-tab-basic" class="sd-tab-content active">
+                    <h4 style="margin-top:0; margin-bottom:15px;">功能开关</h4>
                     
-                    <h4 style="margin-top:15px; margin-bottom:10px;">人物列表</h4>
-                    <div class="sd-char-list-container" id="sd-char-list">
-                        ${renderCharacterList()}
-                    </div>
-                    
-                    <button class="sd-add-btn" id="sd-add-char">+ 添加新人物</button>
-                    
-                    <div class="sd-template-section">
-                        <label>提示词模版</label>
-                        <select id="sd-template-select" class="text_pole" style="width:100%; margin-bottom:10px;">
-                            ${templateOptions}
-                        </select>
-                        <div class="sd-template-controls">
-                            <button id="sd-tpl-edit" class="sd-btn-secondary">✏️ 修改模版</button>
-                            <button id="sd-tpl-del" class="sd-btn-danger">🗑️ 删除模版</button>
-                        </div>
-                        <div style="font-size:0.85em; color:#888; margin-top:8px;">
-                            <i class="fa-solid fa-info-circle"></i> 创建新模版请修改名称和内容之后点另存。<br>模版中的 <code>&lt;!--人物列表--&gt;</code> 将自动替换为上方启用的人物。
-                        </div>
-                        
-                        <div id="sd-template-editor" class="sd-template-editor">
-                            <h4 style="margin-top:0; margin-bottom:10px;">编辑模版</h4>
-                            <div class="sd-template-title-row">
-                                <input type="text" id="sd-tpl-name-edit" class="text_pole" placeholder="模版名称" value="${selectedTemplate}">
-                                <button id="sd-tpl-replace" class="sd-btn-primary" ${isDefaultTemplate ? 'disabled' : ''}>替换</button>
-                                <button id="sd-tpl-saveas" class="sd-btn-secondary">另存</button>
-                            </div>
-                            ${isDefaultTemplate ? '<small style="color:#888; display:block; margin-bottom:10px;">* 系统默认模版只能另存，不能替换</small>' : ''}
-                            <textarea id="sd-tpl-content-edit" class="text_pole" rows="12" style="width:100%; font-family:monospace; font-size:0.9em; margin-bottom:10px;">${selectedTemplateContent}</textarea>
-                            <button id="sd-tpl-ai-btn" class="sd-btn-secondary" style="width:100%; margin-bottom:10px;">🤖 使用AI修改</button>
-                            <textarea id="sd-tpl-ai-instruction" class="text_pole" rows="3" placeholder="告诉AI如何修改模版 (如: 增加更详细的attire说明, 添加色彩要求等)" style="width:100%; display:none;"></textarea>
-                            <button id="sd-tpl-ai-run" class="sd-btn-primary" style="width:100%; margin-top:10px; display:none;">🚀 执行AI修改</button>
-                        </div>
-                    </div>
-                </div>
-                
-                <div id="sd-tab-prefix" class="sd-tab-content">
-                <div style="margin-bottom: 10px;">
-                    <label style="display: flex; align-items: center; gap: 8px;">
-                        <input type="checkbox" id="sd-en" ${settings.enabled?'checked':''}>
-                        <span style="font-weight: bold;">启用解析生图</span>
-                    </label>
-                    <small style="color: #888; display: block; margin-left: 24px; margin-top: 4px;">
-                        自动识别 [IMG_GEN]...[/IMG_GEN] 标签并生成图片UI框
-                    </small>
-                </div>
-                    <label style="margin-top:10px; display:block;">全局前缀</label>
-                    <textarea id="sd-pre" class="text_pole" rows="2" style="width:100%">${settings.globalPrefix}</textarea>
-                    <label style="margin-top:10px; display:block;">全局后缀</label>
-                    <textarea id="sd-suf" class="text_pole" rows="2" style="width:100%">${settings.globalSuffix}</textarea>
-                    <label style="margin-top:10px; display:block;">负面提示词</label>
-                    <textarea id="sd-neg" class="text_pole" rows="3" style="width:100%">${settings.globalNegative}</textarea>
-                    <label style="margin-top:10px; display:block;">自动修复</label>
-                <div style="margin-bottom: 15px; padding: 10px; background: #171717; border-radius: 5px;">
-                    <label style="display: flex; align-items: center; gap: 8px;">
-                        <input type="checkbox" id="sd-auto-refresh" ${settings.autoRefresh?'checked':''}>
-                        <span style="font-weight: bold;">自动修复UI</span>
-                    </label>
-                    <small style="color: #888; display: block; margin-left: 24px; margin-top: 4px;">
-                        ⚠️ 自动扫描并修复UI（可能引起问题，无必要不开）
-                    </small>
-                    <div style="margin-left: 24px; margin-top: 8px;">
-                        <label style="font-size: 12px;">
-                            修复间隔（秒）：
-                            <input type="number" id="sd-auto-refresh-interval" 
-                                   value="${settings.autoRefreshInterval / 1000}" 
-                                   min="1" max="60" step="0.1"
-                                   style="width: 60px; margin-left: 5px; background: #000000;">
+                    <div style="margin-bottom: 12px;">
+                        <label style="display: flex; align-items: center; gap: 8px;">
+                            <input type="checkbox" id="sd-en" ${settings.enabled?'checked':''}>
+                            <span style="font-weight: bold;">启用解析生图</span>
                         </label>
+                        <small style="color: #888; display: block; margin-left: 24px; margin-top: 4px;">
+                            自动识别 [IMG_GEN]...[/IMG_GEN] 标签并生成图片UI框
+                        </small>
                     </div>
-                </div>
-                </div>
-                
-                <div id="sd-tab-api" class="sd-tab-content">
+                    
+                    <div style="margin-bottom: 12px;">
+                        <label style="display: flex; align-items: center; gap: 8px;">
+                            <input type="checkbox" id="sd-inj-en" ${settings.injectEnabled?'checked':''}>
+                            <span style="font-weight: bold;">启用注入</span>
+                        </label>
+                        <small style="color: #888; display: block; margin-left: 24px; margin-top: 4px;">
+                            向AI发送请求前，自动注入提示词模版和人物特征库
+                        </small>
+                        <div style="margin-left: 24px; margin-top: 8px; display: flex; align-items: center; gap: 15px;">
+                            <label style="font-size: 12px;">
+                                注入深度：
+                                <input type="number" id="sd-inj-depth" class="text_pole" value="${settings.injectDepth}" min="0" max="20" style="width:60px;">
+                            </label>
+                            <label style="font-size: 12px;">
+                                发送角色：
+                                <select id="sd-inj-role" class="text_pole" style="width:100px;">
+                                    <option value="system" ${settings.injectRole === 'system' ? 'selected' : ''}>System</option>
+                                    <option value="user" ${settings.injectRole === 'user' ? 'selected' : ''}>User</option>
+                                    <option value="assistant" ${settings.injectRole === 'assistant' ? 'selected' : ''}>Assistant</option>
+                                </select>
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <div style="margin-bottom: 12px;">
+                        <label style="display: flex; align-items: center; gap: 8px;">
+                            <input type="checkbox" id="sd-indep-en" ${settings.independentApiEnabled?'checked':''}>
+                            <span style="font-weight: bold;">启用独立生图模式</span>
+                        </label>
+                        <small style="color: #888; display: block; margin-left: 24px; margin-top: 4px;">
+                            开启后停止注入，改为消息接收后调用独立API分析并插入提示词
+                        </small>
+                        <div style="margin-left: 24px; margin-top: 8px; display: flex; align-items: center; gap: 15px;">
+                            <label style="font-size: 12px;">
+                                历史消息数：
+                                <input type="number" id="sd-indep-history" class="text_pole" value="${settings.independentApiHistoryCount}" min="1" max="10" style="width:60px;">
+                            </label>
+                            <label style="font-size: 12px;">
+                                防抖延迟(ms)：
+                                <input type="number" id="sd-indep-debounce" class="text_pole" value="${settings.independentApiDebounceMs}" min="500" max="5000" step="100" style="width:80px;">
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <div style="margin-bottom: 12px;">
+                        <label style="display: flex; align-items: center; gap: 8px;">
+                            <input type="checkbox" id="sd-auto-refresh" ${settings.autoRefresh?'checked':''}>
+                            <span style="font-weight: bold;">自动修复UI</span>
+                        </label>
+                        <small style="color: #888; display: block; margin-left: 24px; margin-top: 4px;">
+                            ⚠️ 自动扫描并修复UI（可能引起问题，无必要不开）
+                        </small>
+                        <div style="margin-left: 24px; margin-top: 8px;">
+                            <label style="font-size: 12px;">
+                                修复间隔(秒)：
+                                <input type="number" id="sd-auto-refresh-interval" 
+                                       value="${settings.autoRefreshInterval / 1000}" 
+                                       min="1" max="60" step="0.1"
+                                       style="width: 60px; background: #000000;">
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <hr style="border: none; border-top: 1px solid rgba(255,255,255,0.1); margin: 20px 0;">
+                    
+                    <h4 style="margin-bottom:15px;">API 配置</h4>
                     <div class="sd-api-row">
                         <label>Base URL</label>
                         <input type="text" id="sd-url" class="text_pole" placeholder="https://api.deepseek.com" value="${settings.llmConfig.baseUrl}">
@@ -1054,14 +1666,14 @@ $el.find('.sd-ui-wrap').each(function() {
                         <select id="sd-model-select" class="text_pole">
                             <option value="${settings.llmConfig.model}">${settings.llmConfig.model}</option>
                         </select>
-                        <button id="sd-fetch-models" class="sd-btn-secondary" style="flex:0 0 100px;">获取模型</button>
+                        <button id="sd-fetch-models" class="sd-btn-secondary" style="flex:0 0 80px;">获取</button>
                     </div>
                     <div class="sd-api-row">
                         <label>最大Tokens</label>
                         <input type="number" id="sd-max-tokens" class="text_pole" value="${settings.llmConfig.maxTokens}" min="1" max="32000">
                     </div>
                     <div class="sd-api-row">
-                        <label>温度 (Temperature)</label>
+                        <label>温度</label>
                         <input type="range" id="sd-temp" min="0" max="2" step="0.1" value="${settings.llmConfig.temperature}">
                         <span class="sd-range-value" id="sd-temp-val">${settings.llmConfig.temperature}</span>
                     </div>
@@ -1071,21 +1683,121 @@ $el.find('.sd-ui-wrap').each(function() {
                         <span class="sd-range-value" id="sd-top-p-val">${settings.llmConfig.topP}</span>
                     </div>
                     <div class="sd-api-row">
-                        <label>Frequency Penalty</label>
+                        <label>Freq Penalty</label>
                         <input type="range" id="sd-freq-pen" min="-2" max="2" step="0.1" value="${settings.llmConfig.frequencyPenalty}">
                         <span class="sd-range-value" id="sd-freq-pen-val">${settings.llmConfig.frequencyPenalty}</span>
                     </div>
                     <div class="sd-api-row">
-                        <label>Presence Penalty</label>
+                        <label>Pres Penalty</label>
                         <input type="range" id="sd-pres-pen" min="-2" max="2" step="0.1" value="${settings.llmConfig.presencePenalty}">
                         <span class="sd-range-value" id="sd-pres-pen-val">${settings.llmConfig.presencePenalty}</span>
                     </div>
                     <button id="sd-test-api" class="sd-btn-secondary" style="width:100%; margin-top:10px;">🧪 测试API连接</button>
                 </div>
                 
+                <!-- Tab 2: 人物与模版 -->
+                <div id="sd-tab-chars" class="sd-tab-content">
+                    <h4 style="margin-top:0; margin-bottom:10px;">人物列表</h4>
+                    <div class="sd-char-list-container" id="sd-char-list" style="max-height: 200px; overflow-y: auto;">
+                        ${renderCharacterList()}
+                    </div>
+                    <button class="sd-add-btn" id="sd-add-char" style="margin-top:10px;">+ 添加新人物</button>
+                    
+                    <hr style="border: none; border-top: 1px solid rgba(255,255,255,0.1); margin: 20px 0;">
+                    
+                    <div class="sd-template-section" style="margin-top:0;">
+                        <label>提示词模版</label>
+                        <select id="sd-template-select" class="text_pole" style="width:100%; margin-bottom:10px;">
+                            ${templateOptions}
+                        </select>
+                        <div class="sd-template-controls">
+                            <button id="sd-tpl-edit" class="sd-btn-secondary">✏️ 修改模版</button>
+                            <button id="sd-tpl-del" class="sd-btn-danger">🗑️ 删除模版</button>
+                        </div>
+                        <div style="font-size:0.85em; color:#888; margin-top:8px;">
+                            <i class="fa-solid fa-info-circle"></i> 模版中的 <code>&lt;!--人物列表--&gt;</code> 将自动替换为上方启用的人物。
+                        </div>
+                        
+                        <div id="sd-template-editor" class="sd-template-editor">
+                            <h4 style="margin-top:0; margin-bottom:10px;">编辑模版</h4>
+                            <div class="sd-template-title-row">
+                                <input type="text" id="sd-tpl-name-edit" class="text_pole" placeholder="模版名称" value="${selectedTemplate}">
+                                <button id="sd-tpl-replace" class="sd-btn-primary" ${isDefaultTemplate ? 'disabled' : ''}>替换</button>
+                                <button id="sd-tpl-saveas" class="sd-btn-secondary">另存</button>
+                            </div>
+                            ${isDefaultTemplate ? '<small style="color:#888; display:block; margin-bottom:10px;">* 系统默认模版只能另存，不能替换</small>' : ''}
+                            <textarea id="sd-tpl-content-edit" class="text_pole" rows="15" style="width:100%; font-family:monospace; font-size:0.9em; margin-bottom:10px;">${selectedTemplateContent}</textarea>
+                            <button id="sd-tpl-ai-btn" class="sd-btn-secondary" style="width:100%; margin-bottom:10px;">🤖 使用AI修改</button>
+                            <textarea id="sd-tpl-ai-instruction" class="text_pole" rows="3" placeholder="告诉AI如何修改模版 (如: 增加更详细的attire说明, 添加色彩要求等)" style="width:100%; display:none;"></textarea>
+                            <button id="sd-tpl-ai-run" class="sd-btn-primary" style="width:100%; margin-top:10px; display:none;">🚀 执行AI修改</button>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Tab 3: 前后缀 -->
+                <div id="sd-tab-prefix" class="sd-tab-content">
+                    <label style="display:block; margin-bottom:5px;">全局前缀</label>
+                    <textarea id="sd-pre" class="text_pole" rows="4" style="width:100%">${settings.globalPrefix}</textarea>
+                    
+                    <label style="margin-top:15px; display:block; margin-bottom:5px;">全局后缀</label>
+                    <textarea id="sd-suf" class="text_pole" rows="4" style="width:100%">${settings.globalSuffix}</textarea>
+                    
+                    <label style="margin-top:15px; display:block; margin-bottom:5px;">负面提示词</label>
+                    <textarea id="sd-neg" class="text_pole" rows="5" style="width:100%">${settings.globalNegative}</textarea>
+                </div>
+                
+                <!-- Tab 4: 独立生图 -->
+                <div id="sd-tab-indep" class="sd-tab-content">
+                    <div style="margin-bottom: 15px; padding: 12px; background: linear-gradient(145deg, #252530, #1e1e24); border-radius: 8px; box-shadow: 3px 3px 6px var(--nm-shadow-dark), -2px -2px 5px var(--nm-shadow-light);">
+                        <label style="display:block; margin-bottom:8px; font-weight:600;">🔍 过滤标签（上下文过滤）</label>
+                        <input type="text" id="sd-indep-filter-tags" class="text_pole" placeholder="如: <small>, [statbar], <div>（逗号分隔）" value="${settings.independentApiFilterTags || ''}" style="width:100%;">
+                        <small style="color: #888; display: block; margin-top: 6px;">
+                            提取上下文和当前楼层时，会移除这些标签包裹的内容。例如填入 <code>&lt;small&gt;</code> 会移除 <code>&lt;small&gt;...&lt;/small&gt;</code> 内的内容。
+                        </small>
+                    </div>
+                    
+                    <h4 style="margin-top:0; margin-bottom:10px;">上下文预览（最后一次分析）</h4>
+                    <div id="sd-indep-preview" style="background: rgba(0,0,0,0.3); border-radius: 5px; padding: 10px; max-height: 250px; overflow-y: auto;">
+                        <div style="margin-bottom: 10px;">
+                            <strong style="color: var(--SmartThemeQuoteColor);">最新楼层消息（已编号）：</strong>
+                            <pre id="sd-indep-latest" style="white-space: pre-wrap; font-size: 0.85em; color: #aaa; margin-top: 5px;">${independentApiLastPreview.latest || '暂无数据'}</pre>
+                        </div>
+                        <div>
+                            <strong style="color: var(--SmartThemeQuoteColor);">历史上下文：</strong>
+                            <div id="sd-indep-history-list" style="font-size: 0.85em; color: #aaa; margin-top: 5px;">
+                                ${independentApiLastPreview.history.length > 0 
+                                    ? independentApiLastPreview.history.map((h, i) => `<div style="margin-bottom:8px; padding:5px; background:rgba(0,0,0,0.2); border-radius:3px;"><span style="color:${h.role==='user'?'#6cf':'#fc6'}; font-weight:bold;">[${h.role}]</span><br/><span style="white-space:pre-wrap;">${h.content}</span></div>`).join('') 
+                                    : '暂无数据'}
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <h4 style="margin-top:15px; margin-bottom:10px;">完整提示词预览</h4>
+                    <button id="sd-indep-refresh-preview" class="sd-btn-secondary" style="width:100%; margin-bottom:10px;">🔄 刷新预览</button>
+                    <div id="sd-indep-full-prompt" style="background: rgba(0,0,0,0.3); border-radius: 5px; padding: 10px; max-height: 300px; overflow-y: auto;">
+                        <pre style="white-space: pre-wrap; font-size: 0.8em; color: #ccc; margin: 0;">点击上方"刷新预览"按钮查看完整提示词</pre>
+                    </div>
+                    
+                    <button id="sd-indep-manual" class="sd-btn-secondary" style="width:100%; margin-top:15px;">🔄 手动触发独立生图</button>
+                    <small style="color: #888; display: block; margin-top: 5px;">对最新一条AI消息手动执行独立生图流程</small>
+                    
+                    <h4 style="margin-top:20px; margin-bottom:10px;">
+                        <span id="sd-indep-prompt-toggle" style="cursor:pointer; user-select:none;">▶ 自定义系统提示词</span>
+                    </h4>
+                    <div id="sd-indep-prompt-editor" style="display:none;">
+                        <small style="color: #888; display: block; margin-bottom: 8px;">留空则使用默认系统提示词。自定义后会完全替换默认的通用规则部分。</small>
+                        <textarea id="sd-indep-custom-prompt" class="text_pole" rows="12" style="width:100%; font-family:monospace; font-size:0.85em;">${settings.independentApiCustomPrompt || ''}</textarea>
+                        <div style="display:flex; gap:10px; margin-top:10px;">
+                            <button id="sd-indep-prompt-reset" class="sd-btn-secondary" style="flex:1;">恢复默认提示词</button>
+                            <button id="sd-indep-prompt-save" class="sd-btn-primary" style="flex:1;">保存提示词</button>
+                        </div>
+                    </div>
+                </div>
+                
                 <div class="sd-config-controls">
                     <button id="sd-export" class="sd-btn-secondary">📤 导出配置</button>
                     <button id="sd-import" class="sd-btn-secondary">📥 导入配置</button>
+                    <button id="sd-reset-default" class="sd-btn-danger" style="flex:0.6;">🔄 恢复默认</button>
                 </div>
                 
                 <button id="sd-save" class="sd-btn-primary" style="width: 100%; margin-top:10px;">💾 保存设置</button>
@@ -1109,6 +1821,144 @@ $el.find('.sd-ui-wrap').each(function() {
             // 导入配置
             $('#sd-import').on('click', () => {
                 importConfig();
+            });
+
+            // 恢复默认配置（需二次确认）
+            $('#sd-reset-default').on('click', async () => {
+                const confirmed = confirm('⚠️ 确定要恢复所有设置为默认值吗？\n\n此操作将清除所有自定义配置，包括API密钥、人物列表等，且不可撤销。');
+                if (confirmed) {
+                    settings = JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
+                    customTemplates = {};
+                    saveSettings();
+                    localStorage.removeItem(TEMPLATES_KEY);
+                    toastr.success('✅ 已恢复默认配置，请重新打开设置面板');
+                    closePopup();
+                }
+            });
+
+            // 系统提示词编辑器展开/收缩
+            $('#sd-indep-prompt-toggle').on('click', function() {
+                const $editor = $('#sd-indep-prompt-editor');
+                const $toggle = $(this);
+                if ($editor.is(':visible')) {
+                    $editor.slideUp(200);
+                    $toggle.text('▶ 自定义系统提示词');
+                } else {
+                    $editor.slideDown(200);
+                    $toggle.text('▼ 自定义系统提示词');
+                }
+            });
+
+            // 保存自定义系统提示词
+            $('#sd-indep-prompt-save').on('click', () => {
+                settings.independentApiCustomPrompt = $('#sd-indep-custom-prompt').val();
+                saveSettings();
+                toastr.success('✅ 系统提示词已保存');
+            });
+
+            // 恢复默认系统提示词
+            $('#sd-indep-prompt-reset').on('click', () => {
+                const defaultPrompt = buildIndependentApiGeneralRules();
+                $('#sd-indep-custom-prompt').val(defaultPrompt);
+                toastr.info('已填入默认系统提示词，点击"保存提示词"生效');
+            });
+
+            // 刷新完整提示词预览
+            $('#sd-indep-refresh-preview').on('click', () => {
+                const chat = SillyTavern.chat;
+                if (!chat || chat.length === 0) {
+                    $('#sd-indep-full-prompt pre').text('当前没有聊天记录');
+                    return;
+                }
+                
+                // 找到最后一条AI消息
+                let lastAiMesId = -1;
+                for (let i = chat.length - 1; i >= 0; i--) {
+                    if (!chat[i].is_user) {
+                        lastAiMesId = i;
+                        break;
+                    }
+                }
+                
+                if (lastAiMesId < 0) {
+                    $('#sd-indep-full-prompt pre').text('未找到AI消息');
+                    return;
+                }
+                
+                const message = chat[lastAiMesId];
+                const originalText = message.mes;
+                
+                // 提取段落
+                const paragraphs = extractParagraphs(originalText);
+                const formattedParagraphs = formatParagraphsForAI(paragraphs);
+                
+                // 提取历史上下文
+                const historyCount = parseInt($('#sd-indep-history').val()) || 4;
+                const historyContext = extractHistoryContext(lastAiMesId, historyCount);
+                
+                // 构建完整提示词
+                const systemPrompt = buildIndependentApiSystemPrompt();
+                
+                let fullPrompt = '=== 系统提示词 ===\n' + systemPrompt + '\n\n';
+                
+                fullPrompt += '=== 历史上下文 ===\n';
+                if (historyContext.length > 0) {
+                    historyContext.forEach((h, i) => {
+                        fullPrompt += `[${h.role}] ${h.content}\n\n`;
+                    });
+                } else {
+                    fullPrompt += '（无历史上下文）\n\n';
+                }
+                
+                fullPrompt += '=== 待分析的最新剧情（已编号）===\n';
+                fullPrompt += formattedParagraphs || '（未找到有效段落）';
+                
+                // 更新预览
+                $('#sd-indep-full-prompt pre').text(fullPrompt);
+                
+                // 同时更新其他预览区域
+                $('#sd-indep-latest').text(formattedParagraphs || '暂无数据');
+                $('#sd-indep-history-list').html(
+                    historyContext.length > 0 
+                        ? historyContext.map(h => `<div style="margin-bottom:8px; padding:5px; background:rgba(0,0,0,0.2); border-radius:3px;"><span style="color:${h.role==='user'?'#6cf':'#fc6'}; font-weight:bold;">[${h.role}]</span><br/><span style="white-space:pre-wrap;">${h.content}</span></div>`).join('') 
+                        : '暂无数据'
+                );
+                
+                // 保存到预览变量
+                independentApiLastPreview = {
+                    latest: formattedParagraphs,
+                    history: historyContext
+                };
+                
+                toastr.success('预览已刷新', null, { timeOut: 1500 });
+            });
+
+            // 手动触发独立API生图
+            $('#sd-indep-manual').on('click', async () => {
+                const chat = SillyTavern.chat;
+                if (!chat || chat.length === 0) {
+                    toastr.warning('当前没有聊天记录');
+                    return;
+                }
+                
+                // 找到最后一条AI消息
+                let lastAiMesId = -1;
+                for (let i = chat.length - 1; i >= 0; i--) {
+                    if (!chat[i].is_user) {
+                        lastAiMesId = i;
+                        break;
+                    }
+                }
+                
+                if (lastAiMesId < 0) {
+                    toastr.warning('未找到AI消息');
+                    return;
+                }
+                
+                closePopup();
+                setTimeout(() => {
+                    handleIndependentApiGeneration(lastAiMesId);
+                }, 200);
             });
 
             // 人物列表事件
@@ -1384,6 +2234,13 @@ $el.find('.sd-ui-wrap').each(function() {
                 settings.globalNegative = $('#sd-neg').val();
                 settings.autoRefresh = $('#sd-auto-refresh').prop('checked'); //读取自动刷新配置
                 settings.autoRefreshInterval = parseInt($('#sd-auto-refresh-interval').val()) * 1000; //
+                
+                // 独立API模式设置
+                settings.independentApiEnabled = $('#sd-indep-en').is(':checked');
+                settings.independentApiHistoryCount = parseInt($('#sd-indep-history').val()) || 4;
+                settings.independentApiDebounceMs = parseInt($('#sd-indep-debounce').val()) || 1000;
+                settings.independentApiFilterTags = $('#sd-indep-filter-tags').val() || '';
+                
                 settings.llmConfig.baseUrl = $('#sd-url').val();
                 settings.llmConfig.apiKey = $('#sd-key').val();
                 settings.llmConfig.model = $('#sd-model-select').val();
@@ -1410,6 +2267,12 @@ $el.find('.sd-ui-wrap').each(function() {
     }
 
     function handleContextInjection(data) {
+        // 独立API模式下跳过注入
+        if (settings.independentApiEnabled) {
+            addLog('INJECT', '独立API模式已启用，跳过注入');
+            return;
+        }
+        
         if (!settings.enabled || !settings.injectEnabled) return;
         
         const injectPrompt = getInjectPrompt();
@@ -1451,6 +2314,19 @@ function registerSTEvents() {
     for (const ev of eventsToWatch) {
         eventOn(ev, handler);
     }
+    
+    // 3. 独立API模式：单独监听 MESSAGE_RECEIVED 事件
+    eventOn(tavern_events.MESSAGE_RECEIVED, (mesId) => {
+        if (settings.independentApiEnabled && settings.enabled) {
+            // 防抖处理
+            clearTimeout(independentApiDebounceTimer);
+            independentApiDebounceTimer = setTimeout(() => {
+                addLog('EVENT', `MESSAGE_RECEIVED 触发，消息ID: ${mesId}`);
+                handleIndependentApiGeneration(mesId);
+            }, settings.independentApiDebounceMs);
+        }
+    });
+    
     eventOn(tavern_events.GENERATION_STARTED, () => {
         if (settings.autoRefresh && settings.enabled && !autoRefreshPaused) {
             toggleAutoRefresh(true);  // 暂停
