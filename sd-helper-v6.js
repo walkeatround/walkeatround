@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         生图助手 (v42.2 - 错误保持scheduled)
-// @version      v42.2
-// @description  错误/超时保持scheduled状态，no_gen仅在删除图片时填入
+// @name         生图助手 (v43.0 - 世界书集成)
+// @version      v43.0
+// @description  新增世界书集成功能：选择角色世界书条目注入独立API生词，优化提示词结构避免AI在参考资料处生图
 // @author       Walkeatround & Gemini & AI Assistant
 // @match        */*
 // @grant        none
@@ -158,7 +158,10 @@ highly detailed, masterpiece, best quality
         independentApiHistoryCount: 4,     // 历史消息数量
         independentApiDebounceMs: 1000,    // 防抖延迟（毫秒）
         independentApiCustomPrompt: '',    // 自定义系统提示词（空=使用默认）
-        independentApiFilterTags: ''       // 过滤标签（逗号分隔，如: <small>, [statbar]）
+        independentApiFilterTags: '',      // 过滤标签（逗号分隔，如: <small>, [statbar]）
+        // 世界书集成配置
+        worldbookEnabled: true,            // 是否启用世界书注入
+        worldbookSelections: {}            // 按角色存储的世界书条目选择 { 'characterName': { 'bookName': ['entryUid1', 'entryUid2'] } }
     };
 
     let settings = DEFAULT_SETTINGS;
@@ -308,9 +311,11 @@ highly detailed, masterpiece, best quality
 
     // 导出配置
     function exportConfig() {
+        const currentCharName = getCurrentCharacterName();
         const config = {
-            version: '41.0',
+            version: '43.0',  // 更新版本：世界书集成
             exportDate: new Date().toISOString(),
+            exportedFromCharacter: currentCharName || '未知角色',  // 记录导出时的角色
             settings: settings,
             customTemplates: customTemplates
         };
@@ -538,6 +543,181 @@ highly detailed, masterpiece, best quality
 
     // ==================== 独立API生图模式核心函数 ====================
     
+    // ==================== 世界书集成 ====================
+    
+    /**
+     * 获取当前角色名称
+     * @returns {string|null}
+     */
+    function getCurrentCharacterName() {
+        try {
+            // 方法1：从 characters 数组获取
+            if (SillyTavern.characters && typeof SillyTavern.this_chid !== 'undefined') {
+                const character = SillyTavern.characters[SillyTavern.this_chid];
+                if (character?.name) {
+                    return character.name;
+                }
+            }
+            
+            // 方法2：从 name2 获取（角色名称）
+            if (SillyTavern.name2) {
+                return SillyTavern.name2;
+            }
+            
+            // 方法3：从 chat 历史中获取最后一条 AI 消息的名称
+            if (SillyTavern.chat && SillyTavern.chat.length > 0) {
+                for (let i = SillyTavern.chat.length - 1; i >= 0; i--) {
+                    const msg = SillyTavern.chat[i];
+                    if (!msg.is_user && msg.name) {
+                        return msg.name;
+                    }
+                }
+            }
+            
+            addLog('WARN', '无法获取角色名称，已尝试所有方法');
+            return null;
+        } catch (e) {
+            addLog('WARN', `获取角色名称失败: ${e.message}`);
+            return null;
+        }
+    }
+    
+    /**
+     * 获取角色链接的世界书列表
+     * @returns {Promise<{primary: string|null, additional: string[]}>}
+     */
+    async function getCharacterWorldbooks() {
+        try {
+            const TavernHelper = typeof window.TavernHelper !== 'undefined' 
+                ? window.TavernHelper 
+                : (typeof window.parent !== 'undefined' ? window.parent.TavernHelper : null);
+            
+            if (!TavernHelper?.getCharLorebooks) {
+                addLog('WARN', 'TavernHelper.getCharLorebooks 不可用');
+                return { primary: null, additional: [] };
+            }
+            
+            const lorebooks = await TavernHelper.getCharLorebooks({ type: 'all' });
+            addLog('WORLDBOOK', `获取到角色世界书: primary=${lorebooks.primary}, additional=${lorebooks.additional?.length || 0}个`);
+            return lorebooks;
+        } catch (e) {
+            addLog('ERROR', `获取角色世界书失败: ${e.message}`);
+            return { primary: null, additional: [] };
+        }
+    }
+    
+    /**
+     * 获取世界书的所有条目
+     * @param {string} bookName - 世界书名称
+     * @returns {Promise<Array>}
+     */
+    async function getWorldbookEntries(bookName) {
+        try {
+            const TavernHelper = typeof window.TavernHelper !== 'undefined' 
+                ? window.TavernHelper 
+                : (typeof window.parent !== 'undefined' ? window.parent.TavernHelper : null);
+            
+            if (!TavernHelper?.getLorebookEntries) {
+                addLog('WARN', 'TavernHelper.getLorebookEntries 不可用');
+                return [];
+            }
+            
+            const entries = await TavernHelper.getLorebookEntries(bookName);
+            addLog('WORLDBOOK', `世界书 "${bookName}" 条目数: ${entries?.length || 0}`);
+            return entries || [];
+        } catch (e) {
+            addLog('ERROR', `获取世界书条目失败: ${e.message}`);
+            return [];
+        }
+    }
+    
+    /**
+     * 获取当前角色的世界书选择配置
+     * @returns {Object} - { 'bookName': ['uid1', 'uid2'] }
+     */
+    function getCurrentCharacterWorldbookSelection() {
+        const charName = getCurrentCharacterName();
+        if (!charName) return {};
+        return settings.worldbookSelections?.[charName] || {};
+    }
+    
+    /**
+     * 保存当前角色的世界书选择配置
+     * @param {Object} selection - { 'bookName': ['uid1', 'uid2'] }
+     */
+    function saveCurrentCharacterWorldbookSelection(selection) {
+        const charName = getCurrentCharacterName();
+        if (!charName) return;
+        
+        if (!settings.worldbookSelections) {
+            settings.worldbookSelections = {};
+        }
+        settings.worldbookSelections[charName] = selection;
+        saveSettings();
+        addLog('WORLDBOOK', `已保存角色 "${charName}" 的世界书选择`);
+    }
+    
+    /**
+     * 获取选中的世界书条目内容（用于注入AI提示词）
+     * @returns {Promise<string>}
+     */
+    async function getSelectedWorldbookContent() {
+        if (!settings.worldbookEnabled) {
+            addLog('WORLDBOOK', '世界书功能已禁用');
+            return '';
+        }
+        
+        const charName = getCurrentCharacterName();
+        if (!charName) {
+            addLog('WORLDBOOK', '未能获取角色名称，跳过世界书注入');
+            return '';
+        }
+        
+        const selection = getCurrentCharacterWorldbookSelection();
+        addLog('WORLDBOOK', `角色 "${charName}" 的世界书选择: ${JSON.stringify(selection)}`);
+        
+        if (!selection || Object.keys(selection).length === 0) {
+            addLog('WORLDBOOK', '当前角色没有选择任何世界书条目');
+            return '';
+        }
+        
+        let contentParts = [];
+        
+        for (const [bookName, selectedUids] of Object.entries(selection)) {
+            if (!selectedUids || selectedUids.length === 0) continue;
+            
+            try {
+                const entries = await getWorldbookEntries(bookName);
+                addLog('WORLDBOOK', `世界书 "${bookName}" 共 ${entries.length} 条目，已选择 ${selectedUids.length} 个UID: ${selectedUids.join(', ')}`);
+                
+                // 修复类型匹配问题：将选择的uid都转为字符串，条目uid也转为字符串比较
+                const selectedUidsStr = selectedUids.map(u => String(u));
+                const selectedEntries = entries.filter(e => selectedUidsStr.includes(String(e.uid)));
+                
+                addLog('WORLDBOOK', `匹配到 ${selectedEntries.length} 个条目`);
+                
+                for (const entry of selectedEntries) {
+                    if (entry.content && entry.content.trim()) {
+                        // 使用条目名称作为标题（如果有）
+                        const title = entry.comment || entry.name || `条目 ${entry.uid}`;
+                        contentParts.push(`【${title}】\n${entry.content.trim()}`);
+                    }
+                }
+            } catch (e) {
+                addLog('ERROR', `读取世界书 "${bookName}" 条目时出错: ${e.message}`);
+            }
+        }
+        
+        if (contentParts.length === 0) {
+            addLog('WORLDBOOK', '没有找到有效的世界书内容');
+            return '';
+        }
+        
+        addLog('WORLDBOOK', `已读取 ${contentParts.length} 个世界书条目`);
+        return contentParts.join('\n\n');
+    }
+    
+
     /**
      * 根据用户配置的标签过滤文本内容
      * @param {string} text - 原始文本
@@ -664,35 +844,56 @@ highly detailed, masterpiece, best quality
 ## 你的身份
 你是一个专业的Visual Novel图像提示词生成助手，服务于成人向视觉小说创作。
 
-## 你的任务
-分析用户提供的最新剧情内容（已按段落编号[P1], [P2]...标记），根据剧情在合适的位置生成Stable Diffusion文生图提示词。你需要忠实反映剧情中描述的场景，不要回避或美化。
+## ⚠️ 核心任务（必须遵守）
+你的唯一任务是：分析【🎯 最新剧情】部分（已按段落编号[P1], [P2]...标记），只根据最新剧情在合适的位置生成Stable Diffusion文生图提示词。
+
+**关键规则：**
+- 【📚 世界书参考资料】和【📜 历史上下文】仅供你理解人物背景和剧情发展
+- ⚠️ **绝对禁止**在世界书或历史上下文的内容处生成图片
+- 🎯 **只能**为【🎯 最新剧情】部分的内容生成图片
 
 ## 严格输出规范
-你必须且只能输出以下JSON格式，不允许有任何其他内容：
+你可以在prompt字段中先进行思考分析（思维链），然后用[IMG_GEN]...[/IMG_GEN]标签包裹最终的提示词。代码会自动提取标签内的内容。
+
+输出JSON格式：
 \`\`\`json
 {
   "insertions": [
-    { "after_paragraph": 数字, "prompt": "提示词标签" }
+    { 
+      "after_paragraph": 数字, 
+      "prompt": "你的思考过程...\\n[IMG_GEN]masterpiece, best quality, 1girl, ...[/IMG_GEN]" 
+    }
+  ]
+}
+\`\`\`
+
+或者直接输出提示词（不使用思维链）：
+\`\`\`json
+{
+  "insertions": [
+    { "after_paragraph": 数字, "prompt": "masterpiece, best quality, 1girl, ..." }
   ]
 }
 \`\`\`
 
 ## 禁止事项
-- 禁止输出解释或说明文字
-- 禁止复制模版中的系统指令文字（如"You are a Visual Novel Engine"、"Generate story with image prompts"等）
-- prompt字段只能包含Stable Diffusion标签，用逗号分隔
+- 禁止在【📚 世界书参考资料】或【📜 历史上下文】的内容处生成图片
+- 禁止复制模版中的系统指令文字
+- [IMG_GEN]标签内只能包含Stable Diffusion标签，用逗号分隔
 
 ## 必须遵守
-- 人物数据库中的固定特征标签（如"Hongryeon nikke, long hair, blue eyes"等）必须原样使用
+- 人物数据库中的固定特征标签必须原样使用
 - 按模版中的格式规范组织标签顺序
+- after_paragraph的数字必须对应【🎯 最新剧情】中的段落编号
 
-## 通用规则
-1. 只分析纯文本剧情内容，忽略[CODE_BLOCK]和系统文本
+## 生成规则
+1. 只分析【🎯 最新剧情】中的纯文本剧情内容
 2. 每200-250字或场景/表情/动作明显变化时，生成一个提示词
 3. after_paragraph必须是有效的段落编号数字
 4. 没有合适插入点时返回: {"insertions": []}
 5. prompt内容必须按照下方【模版参考】中的格式要求生成`;
     }
+
 
     /**
      * 构建独立API的系统提示词（通用规则 + 用户选择的模版）
@@ -732,21 +933,54 @@ ${userTemplate}
         const url = config.baseUrl.replace(/\/$/, '') + '/chat/completions';
         const systemPrompt = buildIndependentApiSystemPrompt();
         
-        // 构建消息数组
-        const messages = [
-            { role: "system", content: systemPrompt }
-        ];
-        
-        // 添加历史上下文
-        for (const hist of historyContext) {
-            messages.push({ role: hist.role, content: `[历史消息] ${hist.content}` });
+        // 获取世界书内容
+        let worldbookContent = '';
+        try {
+            worldbookContent = await getSelectedWorldbookContent();
+        } catch (e) {
+            addLog('WARN', `获取世界书内容失败: ${e.message}`);
         }
         
-        // 添加最新消息（待分析）
-        messages.push({ 
-            role: "user", 
-            content: `请分析以下最新剧情内容，并在合适的位置插入文生图提示词。只返回JSON格式结果，不要有其他内容。\n\n【待分析的最新剧情】\n${latestMessage}` 
-        });
+        // 构建用户消息内容（按重要性排序：世界书 -> 历史 -> 最新剧情）
+        // 最重要的内容放在最后，确保AI注意力集中在最新剧情上
+        let userContent = '';
+        
+        // 1. 世界书参考资料（仅供理解人物背景）
+        if (worldbookContent) {
+            userContent += `【📚 世界书参考资料】（仅供理解人物背景，⚠️禁止在此处生成图片）
+${worldbookContent}
+
+---
+
+`;
+        }
+        
+        // 2. 历史上下文（仅供理解剧情发展）
+        if (historyContext && historyContext.length > 0) {
+            userContent += `【📜 历史上下文】（仅供理解剧情发展，⚠️禁止在此处生成图片）
+`;
+            for (const hist of historyContext) {
+                const roleLabel = hist.role === 'user' ? '用户' : 'AI';
+                userContent += `[${roleLabel}] ${hist.content}\n\n`;
+            }
+            userContent += `---
+
+`;
+        }
+        
+        // 3. 最新剧情（核心任务：只为这部分生成图片）
+        userContent += `【🎯 最新剧情】（⚠️只能为这部分内容生成图片！after_paragraph的数字对应下方段落编号）
+${latestMessage}
+
+---
+
+请根据以上【🎯 最新剧情】部分的内容，在合适的位置插入文生图提示词。只返回JSON格式结果。`;
+        
+        // 构建消息数组
+        const messages = [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userContent }
+        ];
 
         const requestBody = {
             model: config.model || 'deepseek-chat',
@@ -804,6 +1038,23 @@ ${userTemplate}
                 if (!result.insertions || !Array.isArray(result.insertions)) {
                     throw new Error("返回格式错误：缺少insertions数组");
                 }
+                
+                // 对每个insertion的prompt进行二次处理，提取[IMG_GEN]标签内的真正提示词
+                // 这样AI可以在prompt中保留思维链（提高准确性），代码自动提取最终标签
+                for (const ins of result.insertions) {
+                    if (ins.prompt) {
+                        // 检测是否包含 [IMG_GEN]...[/IMG_GEN] 标签
+                        const imgGenMatch = ins.prompt.match(/\[IMG_GEN\]([\s\S]*?)\[\/IMG_GEN\]/);
+                        if (imgGenMatch) {
+                            // 提取标签内的内容作为真正的prompt
+                            const extractedPrompt = imgGenMatch[1].trim();
+                            addLog('INDEP_API', `从[IMG_GEN]标签中提取提示词: ${extractedPrompt.substring(0, 50)}...`);
+                            ins.prompt = extractedPrompt;
+                        }
+                        // 如果没有[IMG_GEN]标签，保持原样（向后兼容）
+                    }
+                }
+                
                 return result;
             } catch (parseError) {
                 addLog('ERROR', `JSON解析失败: ${parseError.message}, 原始内容: ${content.substring(0, 200)}`);
@@ -1921,6 +2172,29 @@ $el.find('.sd-ui-wrap').each(function() {
                         </small>
                     </div>
                     
+                    <!-- 世界书选择器 -->
+                    <div style="margin-bottom: 15px; padding: 12px; background: linear-gradient(145deg, #252530, #1e1e24); border-radius: 8px; box-shadow: 3px 3px 6px var(--nm-shadow-dark), -2px -2px 5px var(--nm-shadow-light);">
+                        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
+                            <label style="font-weight:600;">📚 世界书注入</label>
+                            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                                <input type="checkbox" id="sd-worldbook-enabled" ${settings.worldbookEnabled ? 'checked' : ''}>
+                                <span style="font-size: 0.9em;">启用</span>
+                            </label>
+                        </div>
+                        <small style="color: #888; display: block; margin-bottom: 10px;">
+                            选中的世界书条目会作为参考资料发送给AI，帮助其理解人物背景。配置按角色卡保存并随导出配置保留。
+                        </small>
+                        <button id="sd-worldbook-load" class="sd-btn-secondary" style="width:100%; margin-bottom:10px;">🔄 加载角色世界书</button>
+                        <div id="sd-worldbook-list" style="max-height: 200px; overflow-y: auto; background: rgba(0,0,0,0.2); border-radius: 5px; padding: 8px;">
+                            <small style="color: #666;">点击"加载角色世界书"以显示可选条目</small>
+                        </div>
+                        <div style="margin-top: 8px; display: flex; gap: 8px;">
+                            <button id="sd-worldbook-select-all" class="sd-btn-secondary" style="flex:1; font-size:0.85em;">全选</button>
+                            <button id="sd-worldbook-deselect-all" class="sd-btn-secondary" style="flex:1; font-size:0.85em;">全不选</button>
+                            <button id="sd-worldbook-save" class="sd-btn-primary" style="flex:1; font-size:0.85em;">💾 保存选择</button>
+                        </div>
+                    </div>
+                    
                     <h4 style="margin-top:0; margin-bottom:10px;">上下文预览（最后一次分析）</h4>
                     <div id="sd-indep-preview" style="background: rgba(0,0,0,0.3); border-radius: 5px; padding: 10px; max-height: 250px; overflow-y: auto;">
                         <div style="margin-bottom: 10px;">
@@ -2001,6 +2275,93 @@ $el.find('.sd-ui-wrap').each(function() {
                 }
             });
 
+            // ==================== 世界书选择器事件 ====================
+            
+            // 世界书启用开关
+            $('#sd-worldbook-enabled').on('change', function() {
+                settings.worldbookEnabled = $(this).is(':checked');
+                saveSettings();
+                addLog('WORLDBOOK', `世界书注入: ${settings.worldbookEnabled ? '已启用' : '已禁用'}`);
+            });
+            
+            // 加载角色世界书
+            $('#sd-worldbook-load').on('click', async () => {
+                const $list = $('#sd-worldbook-list');
+                $list.html('<small style="color: #6cf;">正在加载世界书...</small>');
+                
+                try {
+                    const lorebooks = await getCharacterWorldbooks();
+                    const bookNames = [];
+                    if (lorebooks.primary) bookNames.push(lorebooks.primary);
+                    if (lorebooks.additional?.length) bookNames.push(...lorebooks.additional);
+                    
+                    if (bookNames.length === 0) {
+                        $list.html('<small style="color: #f66;">当前角色没有链接任何世界书</small>');
+                        return;
+                    }
+                    
+                    // 获取当前角色的已选择条目
+                    const currentSelection = getCurrentCharacterWorldbookSelection();
+                    
+                    let html = '';
+                    for (const bookName of bookNames) {
+                        const entries = await getWorldbookEntries(bookName);
+                        const selectedUids = currentSelection[bookName] || [];
+                        
+                        html += `<div style="margin-bottom: 10px;">
+                            <div style="font-weight: 600; color: var(--nm-accent); margin-bottom: 5px; font-size: 0.9em;">📖 ${bookName}</div>`;
+                        
+                        if (entries.length === 0) {
+                            html += '<small style="color: #888; margin-left: 10px;">（无条目）</small>';
+                        } else {
+                            for (const entry of entries) {
+                                const entryName = entry.comment || entry.name || `条目 ${entry.uid}`;
+                                const isSelected = selectedUids.includes(entry.uid);
+                                const isEnabled = entry.enabled !== false;
+                                
+                                html += `<label style="display: flex; align-items: flex-start; gap: 6px; margin: 4px 0 4px 10px; cursor: pointer; opacity: ${isEnabled ? '1' : '0.5'};">
+                                    <input type="checkbox" class="sd-worldbook-entry" data-book="${bookName}" data-uid="${entry.uid}" ${isSelected ? 'checked' : ''}>
+                                    <span style="font-size: 0.85em; line-height: 1.3;">${entryName}${!isEnabled ? ' <span style="color:#f66;">(已禁用)</span>' : ''}</span>
+                                </label>`;
+                            }
+                        }
+                        html += '</div>';
+                    }
+                    
+                    $list.html(html);
+                    toastr.success(`✅ 已加载 ${bookNames.length} 个世界书`);
+                    
+                } catch (e) {
+                    $list.html(`<small style="color: #f66;">加载失败: ${e.message}</small>`);
+                    addLog('ERROR', `加载世界书失败: ${e.message}`);
+                }
+            });
+            
+            // 全选世界书条目
+            $('#sd-worldbook-select-all').on('click', () => {
+                $('#sd-worldbook-list input.sd-worldbook-entry').prop('checked', true);
+            });
+            
+            // 取消全选
+            $('#sd-worldbook-deselect-all').on('click', () => {
+                $('#sd-worldbook-list input.sd-worldbook-entry').prop('checked', false);
+            });
+            
+            // 保存世界书选择
+            $('#sd-worldbook-save').on('click', () => {
+                const selection = {};
+                $('#sd-worldbook-list input.sd-worldbook-entry:checked').each(function() {
+                    const bookName = $(this).data('book');
+                    const uid = $(this).data('uid');
+                    if (!selection[bookName]) selection[bookName] = [];
+                    selection[bookName].push(uid);
+                });
+                
+                saveCurrentCharacterWorldbookSelection(selection);
+                const totalEntries = Object.values(selection).reduce((sum, arr) => sum + arr.length, 0);
+                toastr.success(`✅ 已保存 ${totalEntries} 个世界书条目选择`);
+            });
+
             // 系统提示词编辑器展开/收缩
             $('#sd-indep-prompt-toggle').on('click', function() {
                 const $editor = $('#sd-indep-prompt-editor');
@@ -2029,7 +2390,7 @@ $el.find('.sd-ui-wrap').each(function() {
             });
 
             // 刷新完整提示词预览
-            $('#sd-indep-refresh-preview').on('click', () => {
+            $('#sd-indep-refresh-preview').on('click', async () => {
                 const chat = SillyTavern.chat;
                 if (!chat || chat.length === 0) {
                     $('#sd-indep-full-prompt pre').text('当前没有聊天记录');
@@ -2061,21 +2422,42 @@ $el.find('.sd-ui-wrap').each(function() {
                 const historyCount = parseInt($('#sd-indep-history').val()) || 4;
                 const historyContext = extractHistoryContext(lastAiMesId, historyCount);
                 
-                // 构建完整提示词
+                // 获取世界书内容（异步）
+                let worldbookContent = '';
+                try {
+                    worldbookContent = await getSelectedWorldbookContent();
+                } catch (e) {
+                    addLog('WARN', `预览时获取世界书失败: ${e.message}`);
+                }
+                
+                // 构建完整提示词（与实际API调用结构一致）
                 const systemPrompt = buildIndependentApiSystemPrompt();
                 
                 let fullPrompt = '=== 系统提示词 ===\n' + systemPrompt + '\n\n';
+                fullPrompt += '=== 用户消息（发送给AI的实际内容） ===\n\n';
                 
-                fullPrompt += '=== 历史上下文 ===\n';
+                // 1. 世界书参考资料
+                if (worldbookContent) {
+                    fullPrompt += '【📚 世界书参考资料】（仅供理解人物背景，⚠️禁止在此处生成图片）\n';
+                    fullPrompt += worldbookContent + '\n\n---\n\n';
+                } else {
+                    fullPrompt += '（未选择世界书条目或世界书功能已禁用）\n\n';
+                }
+                
+                // 2. 历史上下文
+                fullPrompt += '【📜 历史上下文】（仅供理解剧情发展，⚠️禁止在此处生成图片）\n';
                 if (historyContext.length > 0) {
                     historyContext.forEach((h, i) => {
-                        fullPrompt += `[${h.role}] ${h.content}\n\n`;
+                        const roleLabel = h.role === 'user' ? '用户' : 'AI';
+                        fullPrompt += `[${roleLabel}] ${h.content}\n\n`;
                     });
                 } else {
                     fullPrompt += '（无历史上下文）\n\n';
                 }
+                fullPrompt += '---\n\n';
                 
-                fullPrompt += '=== 待分析的最新剧情（已编号）===\n';
+                // 3. 最新剧情（核心任务）
+                fullPrompt += '【🎯 最新剧情】（⚠️只能为这部分内容生成图片！after_paragraph的数字对应下方段落编号）\n';
                 fullPrompt += formattedParagraphs || '（未找到有效段落）';
                 
                 // 更新预览
@@ -2095,7 +2477,8 @@ $el.find('.sd-ui-wrap').each(function() {
                     history: historyContext
                 };
                 
-                toastr.success('预览已刷新', null, { timeOut: 1500 });
+                const wbStatus = worldbookContent ? `（含${worldbookContent.split('【').length - 1}个世界书条目）` : '';
+                toastr.success(`预览已刷新${wbStatus}`, null, { timeOut: 2000 });
             });
 
             // 手动触发独立API生图
