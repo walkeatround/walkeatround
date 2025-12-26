@@ -1057,10 +1057,58 @@ ${userTemplate}
         }
     }
 
-    // ==================== 独立API生图模式核心函数 END ====================
+    // ==================== 脚本变量存储 (跨浏览器同步，随脚本导出) ====================
+    
+    // 从脚本变量读取配置
+    function loadConfigFromScriptVar() {
+        if (typeof getVariables !== 'function') return null;
+        try {
+            const scriptVars = getVariables({ type: 'script' });
+            if (scriptVars && scriptVars.config) {
+                addLog('CONFIG', `从脚本变量加载配置成功 (${scriptVars.config._savedAt || '无时间戳'})`);
+                return scriptVars.config;
+            }
+        } catch (e) {
+            console.error('[sd-helper] 获取脚本变量失败:', e);
+        }
+        return null;
+    }
+    
+    // 保存配置到脚本变量
+    function saveConfigToScriptVar(config) {
+        if (typeof replaceVariables !== 'function') {
+            addLog('WARNING', '脚本变量API不可用，回退到localStorage');
+            return false;
+        }
+        
+        const timestamp = new Date().toLocaleString('zh-CN', { 
+            year: 'numeric', month: '2-digit', day: '2-digit',
+            hour: '2-digit', minute: '2-digit', second: '2-digit'
+        });
+        
+        config._savedAt = timestamp;
+        
+        try {
+            replaceVariables({ config: config }, { type: 'script' });
+            addLog('CONFIG', `配置已保存到脚本变量 (${timestamp})`);
+            return true;
+        } catch (e) {
+            console.error('[sd-helper] 保存脚本变量失败:', e);
+            addLog('ERROR', `保存脚本变量失败: ${e.message}`);
+            return false;
+        }
+    }
 
-    // --- Template Management ---
+    // --- Template Management (合并到 config 一起存储到脚本变量) ---
     function loadTemplates() {
+        // 优先从脚本变量加载
+        const scriptConfig = loadConfigFromScriptVar();
+        if (scriptConfig && scriptConfig.customTemplates) {
+            customTemplates = scriptConfig.customTemplates;
+            addLog('CONFIG', '从脚本变量加载自定义模版成功');
+            return;
+        }
+        // 回退到 localStorage
         const stored = localStorage.getItem(TEMPLATES_KEY);
         if (stored) {
             try {
@@ -1073,6 +1121,13 @@ ${userTemplate}
     }
 
     function saveTemplates() {
+        // 合并 settings 和 customTemplates 一起保存到脚本变量
+        const fullConfig = {
+            ...settings,
+            customTemplates: customTemplates
+        };
+        saveConfigToScriptVar(fullConfig);
+        // 同时保存到 localStorage 作为备份
         localStorage.setItem(TEMPLATES_KEY, JSON.stringify(customTemplates));
     }
 
@@ -1110,6 +1165,17 @@ ${userTemplate}
     }, 500);
 
     function loadSettings() {
+        // 优先从脚本变量加载
+        const scriptConfig = loadConfigFromScriptVar();
+        if (scriptConfig) {
+            settings = { ...DEFAULT_SETTINGS, ...scriptConfig };
+            settings.llmConfig = { ...DEFAULT_SETTINGS.llmConfig, ...(scriptConfig.llmConfig || {}) };
+            if (!settings.characters) {
+                settings.characters = DEFAULT_SETTINGS.characters;
+            }
+            return;
+        }
+        // 回退到 localStorage
         const stored = localStorage.getItem(STORAGE_KEY);
         if (stored) {
             try { 
@@ -1124,6 +1190,13 @@ ${userTemplate}
     }
 
     function saveSettings() { 
+        // 合并 settings 和 customTemplates 一起保存到脚本变量
+        const fullConfig = {
+            ...settings,
+            customTemplates: customTemplates
+        };
+        saveConfigToScriptVar(fullConfig);
+        // 同时保存到 localStorage 作为备份
         localStorage.setItem(STORAGE_KEY, JSON.stringify(settings)); 
     }
 
