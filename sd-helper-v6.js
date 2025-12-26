@@ -885,12 +885,13 @@ highly detailed, masterpiece, best quality
 - 人物数据库中的固定特征标签必须原样使用
 - 按模版中的格式规范组织标签顺序
 - after_paragraph的数字必须对应【🎯 最新剧情】中的段落编号
+- ⚠️ **必须至少生成1个提示词**，不要返回空的insertions数组
 
 ## 生成规则
 1. 只分析【🎯 最新剧情】中的纯文本剧情内容
 2. 每200-250字或场景/表情/动作明显变化时，生成一个提示词
 3. after_paragraph必须是有效的段落编号数字
-4. 没有合适插入点时返回: {"insertions": []}
+4. 🎯 **即使剧情简短，也要尝试在最适合的位置生成至少1个提示词**
 5. prompt内容必须按照下方【模版参考】中的格式要求生成`;
     }
 
@@ -1271,14 +1272,52 @@ ${latestMessage}
                 history: historyContext
             };
             
-            // 3. 调用API
-            toastr.clear(progressToast);
-            progressToast = showIndependentApiProgress('正在调用AI分析...');
+            // 3. 调用API（带重试机制）
+            const MAX_RETRIES = 3;
+            let result = null;
+            let lastError = null;
             
-            const result = await callIndependentApiForImagePrompts(formattedParagraphs, historyContext);
+            for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+                try {
+                    toastr.clear(progressToast);
+                    const retryText = attempt > 1 ? ` (第${attempt}次尝试)` : '';
+                    progressToast = showIndependentApiProgress(`正在调用AI分析...${retryText}`);
+                    
+                    result = await callIndependentApiForImagePrompts(formattedParagraphs, historyContext);
+                    
+                    // 检查返回结果是否有效
+                    if (result && result.insertions && result.insertions.length > 0) {
+                        addLog('INDEP_API', `第${attempt}次调用成功，获得${result.insertions.length}个提示词`);
+                        break;  // 成功获取结果，跳出重试循环
+                    } else {
+                        addLog('WARN', `第${attempt}次调用返回空结果，${attempt < MAX_RETRIES ? '将重试...' : '已达最大重试次数'}`);
+                        
+                        if (attempt < MAX_RETRIES) {
+                            // 等待一小段时间再重试
+                            await new Promise(resolve => setTimeout(resolve, 500));
+                        }
+                    }
+                } catch (e) {
+                    lastError = e;
+                    addLog('ERROR', `第${attempt}次调用出错: ${e.message}`);
+                    
+                    if (e.message === '用户终止') {
+                        throw e;  // 用户终止，不重试
+                    }
+                    
+                    if (attempt < MAX_RETRIES) {
+                        await new Promise(resolve => setTimeout(resolve, 500));
+                    }
+                }
+            }
+            
+            // 如果最终还是没有结果，但有错误，抛出错误
+            if (!result && lastError) {
+                throw lastError;
+            }
             
             // 4. 应用插入
-            if (result.insertions && result.insertions.length > 0) {
+            if (result && result.insertions && result.insertions.length > 0) {
                 toastr.clear(progressToast);
                 progressToast = showIndependentApiProgress(`正在插入${result.insertions.length}个提示词...`);
                 
@@ -1292,7 +1331,8 @@ ${latestMessage}
                 addLog('INDEP_API', `成功插入${result.insertions.length}个提示词`);
             } else {
                 toastr.clear(progressToast);
-                toastr.info('AI未找到合适的插入位置', null, { timeOut: 2000 });
+                toastr.info('AI多次分析后仍未找到合适的插入位置', null, { timeOut: 3000 });
+                addLog('INDEP_API', '多次尝试后仍无有效结果');
             }
             
         } catch (error) {
