@@ -1656,6 +1656,9 @@ ${latestMessage}
         registerSTEvents();
         setTimeout(processChatDOM, 1000);
         
+        // 自动检测并添加 IMG_GEN 过滤正则
+        ensureImgGenFilterRegex();
+        
         const templateCount = Object.keys(getAllTemplates()).length;
         const defaultCount = Object.keys(DEFAULT_TEMPLATES).length;
         const customCount = Object.keys(customTemplates).length;
@@ -1668,6 +1671,74 @@ ${latestMessage}
         }
         toggleAutoRefresh();
         addLog('INIT', `生图助手v43启动成功 - 默认模版:${defaultCount}个, 自定义模版:${customCount}个${externalTemplatesLoaded ? ' (已加载外部模版文件)' : ''}`);
+    }
+    
+    /**
+     * 确保存在用于过滤 [IMG_GEN] 标签的全局正则
+     * 如果不存在则自动添加
+     */
+    async function ensureImgGenFilterRegex() {
+        // 检查 API 是否可用
+        if (typeof getTavernRegexes !== 'function' || typeof updateTavernRegexesWith !== 'function') {
+            addLog('REGEX', '酒馆正则API不可用，跳过自动添加正则');
+            return;
+        }
+        
+        const REGEX_NAME = '过滤上下文[IMG_GEN]';
+        const REGEX_PATTERN = '/\\[IMG_GEN\\]([\\s\\S]*?)\\[\\/IMG_GEN\\]/gsi';
+        
+        try {
+            // 获取现有的全局正则
+            const existingRegexes = getTavernRegexes({ scope: 'global' });
+            
+            // 检查是否已存在同名正则
+            const exists = existingRegexes.some(r => r.script_name === REGEX_NAME);
+            
+            if (exists) {
+                addLog('REGEX', `全局正则 "${REGEX_NAME}" 已存在，跳过添加`);
+                return;
+            }
+            
+            // 不存在，需要添加
+            addLog('REGEX', `未找到全局正则 "${REGEX_NAME}"，正在自动添加...`);
+            
+            await updateTavernRegexesWith(regexes => {
+                // 创建新的正则对象
+                const newRegex = {
+                    id: crypto.randomUUID ? crypto.randomUUID() : `sd-helper-${Date.now()}`,
+                    script_name: REGEX_NAME,
+                    enabled: true,
+                    run_on_edit: true,  // 在编辑时运行
+                    scope: 'global',
+                    find_regex: REGEX_PATTERN,
+                    replace_string: '',  // 替换为空（删除匹配内容）
+                    source: {
+                        user_input: false,
+                        ai_output: true,   // 仅AI输出
+                        slash_command: false,
+                        world_info: false
+                    },
+                    destination: {
+                        display: false,
+                        prompt: true       // 仅格式提示词
+                    },
+                    min_depth: null,
+                    max_depth: null
+                };
+                
+                // 添加到正则列表末尾
+                regexes.push(newRegex);
+                return regexes;
+            }, { scope: 'global' });
+            
+            addLog('REGEX', `✅ 成功添加全局正则 "${REGEX_NAME}"`);
+            if (typeof toastr !== 'undefined') {
+                toastr.info(`📝 已自动添加正则: ${REGEX_NAME}`, '生图助手', { timeOut: 3000 });
+            }
+            
+        } catch (e) {
+            addLog('ERROR', `添加全局正则失败: ${e.message}`);
+        }
     }
 
 
@@ -2378,7 +2449,7 @@ $el.find('.sd-ui-wrap').each(function() {
                         <label style="display:block; margin-bottom:8px; font-weight:600;">🔍 过滤标签（上下文过滤）</label>
                         <textarea id="sd-indep-filter-tags" class="text_pole" placeholder="如: <small>, [statbar], <div>, 前缀|后缀（逗号分隔，可换行）" rows="3" style="width:100%; resize:vertical; font-family:monospace; font-size:0.9em;">${settings.independentApiFilterTags || ''}</textarea>
                         <small style="color: #888; display: block; margin-top: 6px;">
-                            支持三种格式：① <code>&lt;xxx&gt;</code> 过滤 <code>&lt;xxx&gt;...&lt;/xxx&gt;</code>；② <code>[xxx]</code> 过滤 <code>[xxx]...[/xxx]</code>；③ <code>前缀|后缀</code> 过滤自定义前后缀包裹的内容（如 <code>&lt;thought target=|&lt;/thought&gt;</code>）
+                            支持三种格式，英文逗号分隔：<br>① <code>&lt;xxx&gt;</code> 过滤 <code>&lt;xxx&gt;...&lt;/xxx&gt;</code>；<br>② <code>[xxx]</code> 过滤 <code>[xxx]...[/xxx]</code>；<br>③ <code>前缀|后缀</code> 过滤自定义前后缀包裹的内容（如 <code>&lt;thought target=|&lt;/thought&gt;</code>）
                         </small>
                     </div>
                     
