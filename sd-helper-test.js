@@ -768,6 +768,10 @@ highly detailed, masterpiece, best quality
 
     /**
      * 根据用户配置的标签过滤文本内容
+     * 支持三种格式：
+     * 1. <xxx> - 过滤 <xxx>...</xxx> 包裹的内容
+     * 2. [xxx] - 过滤 [xxx]...[/xxx] 包裹的内容
+     * 3. 前缀|后缀 - 过滤以前缀开头、后缀结尾的内容（如：<thought target=|</thought>）
      * @param {string} text - 原始文本
      * @returns {string} - 过滤后的文本
      */
@@ -779,13 +783,26 @@ highly detailed, masterpiece, best quality
         const tags = settings.independentApiFilterTags.split(',').map(t => t.trim()).filter(t => t);
         
         for (const tag of tags) {
-            // 处理HTML风格标签，如 <small>
-            if (tag.startsWith('<') && tag.endsWith('>')) {
+            // 格式3：前缀|后缀 格式（如：<thought target=|</thought>）
+            if (tag.includes('|')) {
+                const parts = tag.split('|');
+                if (parts.length === 2 && parts[0] && parts[1]) {
+                    const prefix = parts[0];
+                    const suffix = parts[1];
+                    // 转义正则特殊字符
+                    const escapedPrefix = prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                    const escapedSuffix = suffix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                    const regex = new RegExp(`${escapedPrefix}[\\s\\S]*?${escapedSuffix}`, 'gi');
+                    filtered = filtered.replace(regex, '');
+                }
+            }
+            // 格式1：HTML风格标签，如 <small>
+            else if (tag.startsWith('<') && tag.endsWith('>')) {
                 const tagName = tag.slice(1, -1);
                 const regex = new RegExp(`<${tagName}[^>]*>[\\s\\S]*?<\\/${tagName}>`, 'gi');
                 filtered = filtered.replace(regex, '');
             }
-            // 处理方括号风格标签，如 [statbar]
+            // 格式2：方括号风格标签，如 [statbar]
             else if (tag.startsWith('[') && tag.endsWith(']')) {
                 const tagName = tag.slice(1, -1);
                 const escapedTag = tagName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -2359,9 +2376,9 @@ $el.find('.sd-ui-wrap').each(function() {
                 <div id="sd-tab-indep" class="sd-tab-content">
                     <div style="margin-bottom: 15px; padding: 12px; background: linear-gradient(145deg, #252530, #1e1e24); border-radius: 8px; box-shadow: 3px 3px 6px var(--nm-shadow-dark), -2px -2px 5px var(--nm-shadow-light);">
                         <label style="display:block; margin-bottom:8px; font-weight:600;">🔍 过滤标签（上下文过滤）</label>
-                        <input type="text" id="sd-indep-filter-tags" class="text_pole" placeholder="如: <small>, [statbar], <div>（逗号分隔）" value="${settings.independentApiFilterTags || ''}" style="width:100%;">
+                        <textarea id="sd-indep-filter-tags" class="text_pole" placeholder="如: <small>, [statbar], <div>, 前缀|后缀（逗号分隔，可换行）" rows="3" style="width:100%; resize:vertical; font-family:monospace; font-size:0.9em;">${settings.independentApiFilterTags || ''}</textarea>
                         <small style="color: #888; display: block; margin-top: 6px;">
-                            提取上下文和当前楼层时，会移除这些标签包裹的内容。例如填入 <code>&lt;small&gt;</code> 会移除 <code>&lt;small&gt;...&lt;/small&gt;</code> 内的内容。
+                            支持三种格式：① <code>&lt;xxx&gt;</code> 过滤 <code>&lt;xxx&gt;...&lt;/xxx&gt;</code>；② <code>[xxx]</code> 过滤 <code>[xxx]...[/xxx]</code>；③ <code>前缀|后缀</code> 过滤自定义前后缀包裹的内容（如 <code>&lt;thought target=|&lt;/thought&gt;</code>）
                         </small>
                     </div>
                     
