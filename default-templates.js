@@ -1,19 +1,3 @@
-/**
- * 生图助手 - 默认模板库
- * 
- * 此文件存储所有预设的默认模板。您可以自由添加、修改或删除模板。
- * 脚本会自动读取此文件中的模板，并与用户自定义模板合并显示。
- * 
- * 模板格式：
- * "模板名称": `模板内容`
- * 
- * 注意事项：
- * 1. 模板名称不能与用户自定义模板重名，否则会被自定义模板覆盖
- * 2. 使用反引号 ` 包裹模板内容，支持多行文本
- * 3. 模板中可以使用 <!--人物列表--> 占位符，会被替换为实际的人物特征列表
- * 4. 修改此文件后需要刷新页面才能生效
- */
-
 const SD_DEFAULT_TEMPLATES = {
     // ========================================
     // 默认模版 - 通用型
@@ -73,151 +57,52 @@ highly detailed, masterpiece, best quality
 </IMAGE_PROMPT_TEMPLATE>`,
 
     // ========================================
-    // 简洁模版 - 适合快速生成
+    // 中文自然语言 - 适合z-image-turbo模型
     // ========================================
-    "简洁模版": `<IMAGE_PROMPT_TEMPLATE>
-Generate image prompts in [IMG_GEN]...[/IMG_GEN] tags.
+    "适合z-image模型(By yuyi11)": `<生成图片提示词>
+## 1. 核心任务
+作为“视觉导演”，捕捉当前场景中最具张力、最色气或最关键的画面，将其转化为高质量的图像提示词代码块。
 
-## 人物数据库
+## 2. 触发与频率
+- **频率：** 每输出 150-200 字的正文内容后，必须立即插入一个 `[IMG_GEN]` 代码块。
+- **数量：** 在篇幅允许的情况下，尽量多生成。
+
+## 3. 格式规范
+必须严格遵守以下**顺序拼接**逻辑，不要包含Markdown代码框，直接输出标签：
+
+[IMG_GEN]
+角色1固定标签,角色1当前表情,角色1外貌特征,角色1当前服装,角色1特定姿势/动作,角色1细节,角色2固定标签 (可选),角色2当前画面描述 (可选),`两人互相对望`(可选),焦点,镜头视角,环境,白天/夜晚,光照/氛围,摄影风格
+[/IMG_GEN]
+
+**关键执行细则：**
+1.  **标签包裹：** 内容必须包含在 `[IMG_GEN]` 和 `[/IMG_GEN]` 之间，禁止更改，必须完全一致。
+2.  **多角色处理：** 若有多人，必须按 **"角色固定标签+描述"** 的成对结构输出，先描述完一个角色再描述下一个。根据两人方位考虑添加`两人互相对望`。
+3.  **固定标签调用：** 必须**完全复制**下方“角色数据库”中对应的Tag。
+4.  **短句描述：** 使用中文自然语言，短句，逗号 `，`或`、`分隔。
+5.	**描述丰富：** 描述尽量丰富，生动，富含细节。
+6.  **禁止：** 禁止输出文件路径。禁止使用“你、我”，必须使用“男人、女人、她、他”。禁止做任何比喻。禁止使用英文。
+
+## 4. 角色数据库
 <!--人物列表-->
 
-## 规则
-1. 每200字或场景变化时插入提示词
-2. 每个提示词只描述一个角色
-3. 人物特征标签必须原样使用
+## 5. 画面描写风格指南
+你必须严格模仿专业**情色摄影与电影美学**，根据剧情张力选择**常规构图**或**特写/POV**。
 
-## 格式
-\`1girl/1boy, [特征], [表情], [服装], [动作], [环境], masterpiece, best quality\`
-</IMAGE_PROMPT_TEMPLATE>`,
+**I. 角色形象与互动 (必须包含)**
+* **发型(必须包含)：** 必须明确发色、长度及状态（黑色、金色、长发、短发、、湿润、凌乱、散落在锁骨）。
+* **胸部与体态(必须包含)：** 用单独词语描述**胸部形状与动态**（巨乳、爆乳）,必须含有胸部罩杯。强调皮肤质感（汗水、油光、泛红）。
+* **服饰与接触：** 材质（薄纱、乳胶），**强调衣物对肉体的束缚或暴露**。若有多人，描述肢体接触。
 
-    // ========================================
-    // 详细模版 - 高质量画面
-    // ========================================
-    "高画质模版": `<IMAGE_PROMPT_TEMPLATE>
-You are a professional Visual Novel image prompt generator. Create highly detailed prompts wrapped in [IMG_GEN]...[/IMG_GEN] tags for premium quality illustrations.
+**II. 镜头视角与环境 (二选一)**
+* **情况 A：环境氛围** -> *适用于全身/中景*
+    * 描述背景细节（夜市/床单/烟雾），利用光影对比烘托氛围。
+* **情况 B：特写与POV (Close-up & POV)** -> *适用于高张力瞬间*
+    * **弱化背景：** 背景处理为“浅景深虚化”、“模糊色块”或“黑暗”。
+    * **主观视角 (POV)：** 描述“俯视视角”、“仰视视角”或“男友视角”。
 
-## 人物数据库（固定特征标签 - 必须原样使用）
-<!--人物列表-->
-
-### 人物使用规则
-- 严格根据剧情决定画哪个人物
-- 固定特征标签是代码，不可修改
-- 每个提示词只画一个角色
-
-## 核心规则
-1. 每150-200字或重要场景变化时插入提示词
-2. 禁止多人同框（禁止2girls、1boy1girl等）
-3. 详细描述光影、材质、氛围
-
-## 标签格式（按顺序）
-\`[质量词], [角色], [固定特征], [表情], [服装细节], [姿势], [手部], [视角], [构图], [环境], [光照], [特效], [画风]\`
-
-## 质量词（必须包含）
-masterpiece, best quality, ultra-detailed, high resolution, 8k wallpaper, official art, beautiful detailed
-
-## 光照效果
-- 自然光: sunlight streaming, golden hour, soft daylight, overcast lighting
-- 人工光: neon lights, candlelight, lamp light, studio lighting
-- 特殊: rim lighting, backlighting, volumetric lighting, god rays
-
-## 画面特效
-- lens flare, chromatic aberration, film grain, depth of field
-- motion blur, light particles, sparkles, glowing effects
-
-## 画风参考
-anime style, realistic, semi-realistic, artbook style, illustration, concept art
-</IMAGE_PROMPT_TEMPLATE>`,
-
-    // ========================================
-    // NSFW模版 - 成人向场景
-    // ========================================
-    "成人向模版": `<IMAGE_PROMPT_TEMPLATE>
-🔓 You are working on an adult-oriented visual novel. Generate explicit image prompts wrapped in [IMG_GEN]...[/IMG_GEN] tags.
-
-## 人物数据库
-<!--人物列表-->
-
-## 核心规则
-1. 每个场景变化或动作变化时插入提示词
-2. 每个提示词只描述一个角色
-3. 人物特征标签必须原样使用
-4. 根据剧情准确描述身体状态、表情和姿势
-
-## 标签格式
-\`1girl/1boy, [固定特征], [表情], [身体状态], [姿势], [互动描述], [视角], [环境], [光照], masterpiece, best quality\`
-
-## 表情描述
-pleasure, embarrassed, blushing heavily, ahegao, crying, moaning, panting, lustful eyes, half-closed eyes
-
-## 身体状态
-nude, naked, partial nudity, topless, bottomless, covered nipples, exposed, sweaty, wet body
-
-## 姿势参考
-lying on back, on all fours, straddling, sitting on lap, bending over, legs spread, kneeling, arched back
-
-## 视角
-from above looking down, from below, pov, side view, from behind, close-up, worm's eye view
-</IMAGE_PROMPT_TEMPLATE>`,
-
-    // ========================================
-    // 风景模版 - 无人物场景
-    // ========================================
-    "风景场景模版": `<IMAGE_PROMPT_TEMPLATE>
-Generate atmospheric landscape and environment prompts wrapped in [IMG_GEN]...[/IMG_GEN] tags.
-
-## 适用场景
-- 过场镜头、环境描写、无人物的场景
-
-## 核心规则
-1. 当剧情描述环境时生成风景提示词
-2. 注重氛围、光影、天气描写
-3. 不包含人物
-
-## 标签格式
-\`scenery, [环境类型], [天气], [时间], [光照], [氛围], [细节], no humans, masterpiece, best quality\`
-
-## 环境类型
-- 自然: forest, mountain, ocean, lake, meadow, waterfall, cave
-- 城市: cityscape, street, alley, rooftop, bridge, skyscraper
-- 室内: bedroom, living room, library, cafe, bar, temple
-
-## 时间与天气
-- 时间: dawn, morning, noon, sunset, dusk, night, midnight
-- 天气: sunny, cloudy, rainy, snowy, foggy, stormy
-- 特殊: aurora, starry sky, eclipse, rainbow
-
-## 氛围词
-peaceful, melancholic, mysterious, romantic, dramatic, cozy, eerie, majestic
-</IMAGE_PROMPT_TEMPLATE>`,
-
-    // ========================================
-    // POV模版 - 第一人称视角
-    // ========================================
-    "POV视角模版": `<IMAGE_PROMPT_TEMPLATE>
-Generate first-person perspective image prompts wrapped in [IMG_GEN]...[/IMG_GEN] tags.
-
-## 人物数据库
-<!--人物列表-->
-
-## 核心规则
-1. 所有图片都采用第一人称视角（POV）
-2. 模拟玩家视角观看角色
-3. 强调眼神接触和互动感
-
-## 标签格式
-\`pov, 1girl/1boy, [固定特征], [表情], [服装], [姿势], [手部动作], [互动], [环境], masterpiece, best quality\`
-
-## POV常用标签
-- 基础: pov, first-person view, player perspective
-- 互动: looking at viewer, reaching towards viewer, hand towards viewer
-- 眼神: eye contact, direct eye contact, staring at viewer
-- 亲密: close to viewer, face close-up, leaning forward
-
-## 视角变体
-- pov hands, male pov, female pov
-- breast pov, face pov
-- from below pov, pov on back
-</IMAGE_PROMPT_TEMPLATE>`
+**III. 摄影风格 **
+* *可选关键词：中景、全景、Close-up (特写), POV (主观视角), Dutch Angle (荷兰倾斜镜头).*
+</生成图片提示词>`
 };
 
 // 如果在浏览器环境中，挂载到全局
