@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         生图助手 (v43.0 - 世界书集成)
-// @version      v43.0
-// @description  新增世界书集成功能：选择角色世界书条目注入独立API生词，优化提示词结构避免AI在参考资料处生图
+// @name         生图助手 (v43.1 - URL修复)
+// @version      v43.1
+// @description  修复图片URL包含特殊字符时无法正确匹配和显示的问题，优化外部模版加载
 // @author       Walkeatround & Gemini & AI Assistant
 // @match        */*
 // @grant        none
@@ -67,8 +67,9 @@
         console.log(logLine);
     }
 
-    // --- 精简后的默认提示词模版 (只保留默认模版) ---
-    const DEFAULT_TEMPLATES = {
+    // --- 默认提示词模版 ---
+    // 内置回退模版（当外部模版文件加载失败时使用）
+    const BUILTIN_DEFAULT_TEMPLATES = {
         "默认模版": `<IMAGE_PROMPT_TEMPLATE>
 You are a Visual Novel Engine. Generate story with image prompts wrapped in [IMG_GEN]...[/IMG_GEN] tags.
 
@@ -122,7 +123,62 @@ smile, sad, angry, surprised, scared, blushing, gentle smile, tearful eyes, emba
 ## 质量词后缀
 highly detailed, masterpiece, best quality
 </IMAGE_PROMPT_TEMPLATE>`
-            };
+    };
+    
+    // 实际使用的默认模版（会尝试从外部文件加载）
+    let DEFAULT_TEMPLATES = { ...BUILTIN_DEFAULT_TEMPLATES };
+    let externalTemplatesLoaded = false;
+    
+    // 🔧 配置：模版文件的远程URL（Cloudflare Pages 固定域名）
+    const TEMPLATES_URL = 'https://walkeatround.pages.dev/default-templates.js';
+    
+    /**
+     * 从远程URL加载外部默认模版文件
+     */
+    async function loadExternalDefaultTemplates() {
+        // 1. 检查是否已加载到全局变量
+        if (typeof window.SD_DEFAULT_TEMPLATES !== 'undefined') {
+            DEFAULT_TEMPLATES = { ...window.SD_DEFAULT_TEMPLATES };
+            externalTemplatesLoaded = true;
+            addLog('TEMPLATES', `从全局变量加载了 ${Object.keys(DEFAULT_TEMPLATES).length} 个默认模版`);
+            return true;
+        }
+        
+        // 2. 从远程URL加载
+        try {
+            addLog('TEMPLATES', `从 ${TEMPLATES_URL} 加载模版...`);
+            const response = await safeFetch(TEMPLATES_URL);
+            
+            if (response.ok) {
+                const scriptText = await response.text();
+                // 使用 eval 而不是 new Function，因为模版内容包含反引号会导致 new Function 解析错误
+                try {
+                    // 在隔离作用域中执行脚本
+                    const evalScript = (code) => {
+                        const result = eval(code);
+                        return typeof SD_DEFAULT_TEMPLATES !== 'undefined' ? SD_DEFAULT_TEMPLATES : null;
+                    };
+                    const templates = evalScript(scriptText);
+                    
+                    if (templates && typeof templates === 'object' && Object.keys(templates).length > 0) {
+                        DEFAULT_TEMPLATES = { ...templates };
+                        window.SD_DEFAULT_TEMPLATES = templates;
+                        externalTemplatesLoaded = true;
+                        addLog('TEMPLATES', `✅ 加载了 ${Object.keys(DEFAULT_TEMPLATES).length} 个默认模版`);
+                        return true;
+                    } else {
+                        addLog('TEMPLATES', '解析模版结果为空，使用内置模版');
+                    }
+                } catch (evalError) {
+                    addLog('TEMPLATES', `解析模版失败: ${evalError.message}，使用内置模版`);
+                }
+            }
+        } catch (e) {
+            addLog('TEMPLATES', `加载失败: ${e.message}，使用内置模版`);
+        }
+        
+        return false;
+    }
 
     const DEFAULT_SETTINGS = {
         enabled: true, 
@@ -720,6 +776,10 @@ highly detailed, masterpiece, best quality
 
     /**
      * 根据用户配置的标签过滤文本内容
+     * 支持三种格式：
+     * 1. <xxx> - 过滤 <xxx>...</xxx> 包裹的内容
+     * 2. [xxx] - 过滤 [xxx]...[/xxx] 包裹的内容
+     * 3. 前缀|后缀 - 过滤以前缀开头、后缀结尾的内容（如：<thought target=|</thought>）
      * @param {string} text - 原始文本
      * @returns {string} - 过滤后的文本
      */
@@ -731,13 +791,26 @@ highly detailed, masterpiece, best quality
         const tags = settings.independentApiFilterTags.split(',').map(t => t.trim()).filter(t => t);
         
         for (const tag of tags) {
-            // 处理HTML风格标签，如 <small>
-            if (tag.startsWith('<') && tag.endsWith('>')) {
+            // 格式3：前缀|后缀 格式（如：<thought target=|</thought>）
+            if (tag.includes('|')) {
+                const parts = tag.split('|');
+                if (parts.length === 2 && parts[0] && parts[1]) {
+                    const prefix = parts[0];
+                    const suffix = parts[1];
+                    // 转义正则特殊字符
+                    const escapedPrefix = prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                    const escapedSuffix = suffix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                    const regex = new RegExp(`${escapedPrefix}[\\s\\S]*?${escapedSuffix}`, 'gi');
+                    filtered = filtered.replace(regex, '');
+                }
+            }
+            // 格式1：HTML风格标签，如 <small>
+            else if (tag.startsWith('<') && tag.endsWith('>')) {
                 const tagName = tag.slice(1, -1);
                 const regex = new RegExp(`<${tagName}[^>]*>[\\s\\S]*?<\\/${tagName}>`, 'gi');
                 filtered = filtered.replace(regex, '');
             }
-            // 处理方括号风格标签，如 [statbar]
+            // 格式2：方括号风格标签，如 [statbar]
             else if (tag.startsWith('[') && tag.endsWith(']')) {
                 const tagName = tag.slice(1, -1);
                 const escapedTag = tagName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -1534,15 +1607,20 @@ ${latestMessage}
     }
 
     // --- Initialization ---
-    const waitForCore = setInterval(() => {
+    const waitForCore = setInterval(async () => {
         if (typeof SillyTavern !== 'undefined' && typeof $ !== 'undefined' && SillyTavern.chat) {
             clearInterval(waitForCore);
             if (!$('#sd-global-css-v35').length) $('<style id="sd-global-css-v35">').text(GLOBAL_CSS).appendTo('head');
+            
+            // 先尝试加载外部默认模板
+            await loadExternalDefaultTemplates();
+            
             loadSettings();
             loadTemplates();
             initScript();
         }
     }, 500);
+
 
     function loadSettings() {
         // 优先从脚本变量加载
@@ -1585,15 +1663,92 @@ ${latestMessage}
         initGlobalListeners();
         registerSTEvents();
         setTimeout(processChatDOM, 1000);
+        
+        // 自动检测并添加 IMG_GEN 过滤正则
+        ensureImgGenFilterRegex();
+        
+        const templateCount = Object.keys(getAllTemplates()).length;
+        const defaultCount = Object.keys(DEFAULT_TEMPLATES).length;
+        const customCount = Object.keys(customTemplates).length;
+        
         if (typeof toastr !== 'undefined') {
-            toastr.success('🎨 生图助手已启动', '插件加载', { 
+            toastr.success(`🎨 生图助手已启动 (${templateCount}个模版)`, '插件加载', { 
             timeOut: 1500,
             positionClass: 'toast-top-center'
             });
         }
         toggleAutoRefresh();
-        addLog('INIT', '生图助手v40启动成功');
+        addLog('INIT', `生图助手v43启动成功 - 默认模版:${defaultCount}个, 自定义模版:${customCount}个${externalTemplatesLoaded ? ' (已加载外部模版文件)' : ''}`);
     }
+    
+    /**
+     * 确保存在用于过滤 [IMG_GEN] 标签的全局正则
+     * 如果不存在则自动添加
+     */
+    async function ensureImgGenFilterRegex() {
+        // 检查 API 是否可用
+        if (typeof getTavernRegexes !== 'function' || typeof updateTavernRegexesWith !== 'function') {
+            addLog('REGEX', '酒馆正则API不可用，跳过自动添加正则');
+            return;
+        }
+        
+        const REGEX_NAME = '过滤上下文[IMG_GEN]';
+        const REGEX_PATTERN = '/\\[IMG_GEN\\]([\\s\\S]*?)\\[\\/IMG_GEN\\]/gsi';
+        
+        try {
+            // 获取现有的全局正则
+            const existingRegexes = getTavernRegexes({ scope: 'global' });
+            
+            // 检查是否已存在同名正则
+            const exists = existingRegexes.some(r => r.script_name === REGEX_NAME);
+            
+            if (exists) {
+                addLog('REGEX', `全局正则 "${REGEX_NAME}" 已存在，跳过添加`);
+                return;
+            }
+            
+            // 不存在，需要添加
+            addLog('REGEX', `未找到全局正则 "${REGEX_NAME}"，正在自动添加...`);
+            
+            await updateTavernRegexesWith(regexes => {
+                // 创建新的正则对象
+                const newRegex = {
+                    id: crypto.randomUUID ? crypto.randomUUID() : `sd-helper-${Date.now()}`,
+                    script_name: REGEX_NAME,
+                    enabled: true,
+                    run_on_edit: true,  // 在编辑时运行
+                    scope: 'global',
+                    find_regex: REGEX_PATTERN,
+                    replace_string: '',  // 替换为空（删除匹配内容）
+                    source: {
+                        user_input: false,
+                        ai_output: true,   // 仅AI输出
+                        slash_command: false,
+                        world_info: false
+                    },
+                    destination: {
+                        display: false,
+                        prompt: true       // 仅格式提示词
+                    },
+                    min_depth: null,
+                    max_depth: null
+                };
+                
+                // 添加到正则列表末尾
+                regexes.push(newRegex);
+                return regexes;
+            }, { scope: 'global' });
+            
+            addLog('REGEX', `✅ 成功添加全局正则 "${REGEX_NAME}"`);
+            if (typeof toastr !== 'undefined') {
+                toastr.info(`📝 已自动添加正则: ${REGEX_NAME}`, '生图助手', { timeOut: 3000 });
+            }
+            
+        } catch (e) {
+            addLog('ERROR', `添加全局正则失败: ${e.message}`);
+        }
+    }
+
 
     
 
@@ -1699,10 +1854,13 @@ ${latestMessage}
             const result = settings.timeoutEnabled 
                 ? await withTimeout(slashPromise, settings.timeoutSeconds * 1000)
                 : await slashPromise;
-            const newUrls = (result || '').match(/(https?:\/\/|\/|output\/)[^\s"']+\.(png|jpg|jpeg|webp|gif)/gi) || [];
-            if (newUrls.length > 0) {
+            // 匹配URL：使用[^\n]匹配任意字符（除换行符），支持URL包含引号、空格、中文等任意特殊字符
+            const newUrls = (result || '').match(/(https?:\/\/|\/|output\/)[^\n]+?\.(png|jpg|jpeg|webp|gif)/gi) || [];
+            // 保持原始URL格式，仅清理尾部空白
+            const trimmedUrls = newUrls.map(url => url.trim());
+            if (trimmedUrls.length > 0) {
                 state.el.msg.text('✅ 成功');
-                const uniqueImages = [...new Set([...state.images, ...newUrls])];
+                const uniqueImages = [...new Set([...state.images, ...trimmedUrls])];
                 await updateChatData(state.mesId, state.blockIdx, state.prompt, uniqueImages, false, false);
                 setTimeout(() => {
                     const $newWrap = $(`.mes[mesid="${state.mesId}"] .sd-ui-wrap[data-block-idx="${state.blockIdx}"]`);
@@ -1732,7 +1890,7 @@ ${latestMessage}
             $img.hide(); $ph.show(); $left.hide(); $del.hide();
             $right.addClass('gen-mode').attr('title', '点击生成图片');
         } else {
-            $ph.hide(); $img.attr('src', images[idx]).show(); $left.toggle(idx > 0); $del.show();
+            $ph.hide(); $img.attr('src', encodeImageUrl(images[idx])).show(); $left.toggle(idx > 0); $del.show();
             $right.toggleClass('gen-mode', idx === count - 1).attr('title', idx === count - 1 ? '生成新图' : '下一张');
             $msg.text(`${idx + 1} / ${count}`).addClass('show');
             setTimeout(() => $msg.removeClass('show'), 2000);
@@ -1960,8 +2118,10 @@ $el.find('.sd-ui-wrap').each(function() {
     function parseBlockContent(raw) {
         const text = $('<div>').html(raw).text();
         const preventAuto = raw.includes(NO_GEN_FLAG), isScheduled = raw.includes(SCHEDULED_FLAG);
-        const urlRegex = /(https?:\/\/|\/|output\/)[^\s"']+\.(png|jpg|jpeg|webp|gif)/gi;
-        const images = text.match(urlRegex) || [];
+        // 匹配URL：使用[^\n]匹配任意字符（除换行符），支持URL包含引号、空格、中文等任意特殊字符
+        const urlRegex = /(https?:\/\/|\/|output\/)[^\n]+?\.(png|jpg|jpeg|webp|gif)/gi;
+        // 保持原始URL格式，仅清理尾部空白
+        const images = (text.match(urlRegex) || []).map(url => url.trim());
         let prompt = text.replace(urlRegex, '').replace(NO_GEN_FLAG, '').replace(SCHEDULED_FLAG, '').trim();
         return { prompt, images, preventAuto, isScheduled };
     }
@@ -1988,7 +2148,7 @@ $el.find('.sd-ui-wrap').each(function() {
                     <div class="sd-zone right ${!has || initIdx === images.length-1 ? 'gen-mode' : ''}"></div>
                     <div class="sd-zone delete" style="display:${has ? 'block' : 'none'}"></div>
                     <div class="sd-ui-msg">${has ? `${initIdx+1}/${images.length}` : ''}</div>
-                    <img class="sd-ui-image" src="${has ? images[initIdx] : ''}" style="display:${has ? 'block' : 'none'}" />
+                    <img class="sd-ui-image" src="${has ? encodeImageUrl(images[initIdx]) : ''}" style="display:${has ? 'block' : 'none'}" />
                     <div class="${placeholderClass}" style="display:${has ? 'none' : 'block'}"><i class="fa-solid fa-image"></i> ${placeholderText}</div>
                 </div>
             </div>
@@ -1997,6 +2157,14 @@ $el.find('.sd-ui-wrap').each(function() {
 
     function escapeArg(s) { return String(s || '').replace(/["\\]/g, '\\$&'); }
     function escapeRegExp(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+    
+    // 对图片URL进行编码，确保特殊字符（空格、引号、&、#、@等）可以正确在img标签中显示
+    function encodeImageUrl(url) {
+        if (!url) return '';
+        // 分割路径，对每个部分单独使用 encodeURIComponent 编码，然后用 / 重新组合
+        // encodeURIComponent 会编码所有特殊字符（包括 @ # & = + ; 等）
+        return url.split('/').map(part => encodeURIComponent(part)).join('/');
+    }
 
     // --- Menus & Popups ---
     function addMenuItem() {
@@ -2262,6 +2430,11 @@ $el.find('.sd-ui-wrap').each(function() {
                         <div style="font-size:0.85em; color:#888; margin-top:8px;">
                             <i class="fa-solid fa-info-circle"></i> 模版中的 <code>&lt;!--人物列表--&gt;</code> 将自动替换为上方启用的人物。
                         </div>
+                        <div style="font-size:0.8em; color:#666; margin-top:5px; padding:8px; background:rgba(0,0,0,0.2); border-radius:5px;">
+                            📦 模版库: ${Object.keys(DEFAULT_TEMPLATES).length}个系统模版${externalTemplatesLoaded ? ' (已加载外部文件)' : ' (内置)'}, ${Object.keys(customTemplates).length}个自定义模版<br/>
+                            <span style="color:#888;">💡 你可以编辑 <code>default-templates.js</code> 添加更多默认模版</span>
+                        </div>
+
                         
                         <div id="sd-template-editor" class="sd-template-editor">
                             <h4 style="margin-top:0; margin-bottom:10px;">编辑模版</h4>
@@ -2295,9 +2468,9 @@ $el.find('.sd-ui-wrap').each(function() {
                 <div id="sd-tab-indep" class="sd-tab-content">
                     <div style="margin-bottom: 15px; padding: 12px; background: linear-gradient(145deg, #252530, #1e1e24); border-radius: 8px; box-shadow: 3px 3px 6px var(--nm-shadow-dark), -2px -2px 5px var(--nm-shadow-light);">
                         <label style="display:block; margin-bottom:8px; font-weight:600;">🔍 过滤标签（上下文过滤）</label>
-                        <input type="text" id="sd-indep-filter-tags" class="text_pole" placeholder="如: <small>, [statbar], <div>（逗号分隔）" value="${settings.independentApiFilterTags || ''}" style="width:100%;">
+                        <textarea id="sd-indep-filter-tags" class="text_pole" placeholder="如: <small>, [statbar], <div>, 前缀|后缀（逗号分隔，可换行）" rows="3" style="width:100%; resize:vertical; font-family:monospace; font-size:0.9em;">${settings.independentApiFilterTags || ''}</textarea>
                         <small style="color: #888; display: block; margin-top: 6px;">
-                            提取上下文和当前楼层时，会移除这些标签包裹的内容。例如填入 <code>&lt;small&gt;</code> 会移除 <code>&lt;small&gt;...&lt;/small&gt;</code> 内的内容。
+                            支持三种格式，英文逗号分隔：<br>① <code>&lt;xxx&gt;</code> 过滤 <code>&lt;xxx&gt;...&lt;/xxx&gt;</code>；<br>② <code>[xxx]</code> 过滤 <code>[xxx]...[/xxx]</code>；<br>③ <code>前缀|后缀</code> 过滤自定义前后缀包裹的内容（如 <code>&lt;thought target=|&lt;/thought&gt;</code>）
                         </small>
                     </div>
                     
