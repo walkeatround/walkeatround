@@ -199,7 +199,7 @@ highly detailed, masterpiece, best quality
         try {
             const messages = TavernHelper.getChatMessages(mesId);
             if (!messages || messages.length === 0) return null;
-            return messages[0].extra?.sdHelper || null;
+            return messages[0].data?.sdHelper || null;
         } catch (e) {
             error('获取 sdHelper 数据失败:', e);
             return null;
@@ -226,8 +226,8 @@ highly detailed, masterpiece, best quality
             const msg = messages[0];
             const updateData = {
                 message_id: mesId,
-                extra: {
-                    ...msg.extra,
+                data: {
+                    ...msg.data,
                     sdHelper: {
                         ...sdHelperData,
                         updatedAt: Date.now()
@@ -555,48 +555,111 @@ highly detailed, masterpiece, best quality
      * @param {number} mesId - 消息ID
      */
     function renderGalleriesForMessage(mesId) {
+        log(`=== 开始渲染消息 ${mesId} 的图库 ===`);
+
         const sdHelper = getSdHelperData(mesId);
         if (!sdHelper || !sdHelper.galleries || sdHelper.galleries.length === 0) {
+            log(`消息 ${mesId}: 无 sdHelper 数据或无图库`);
             return;
         }
 
+        log(`消息 ${mesId}: 找到 ${sdHelper.galleries.length} 个图库数据`);
+
         const $mesBlock = $(`.mes[mesid="${mesId}"]`);
-        if (!$mesBlock.length) return;
+        if (!$mesBlock.length) {
+            log(`消息 ${mesId}: 找不到 .mes[mesid="${mesId}"] 元素`);
+            return;
+        }
+        log(`消息 ${mesId}: 找到 .mes 元素`);
 
         const $mesText = $mesBlock.find('.mes_text');
-        if (!$mesText.length) return;
+        if (!$mesText.length) {
+            log(`消息 ${mesId}: 找不到 .mes_text 元素`);
+            return;
+        }
+        log(`消息 ${mesId}: 找到 .mes_text 元素，HTML 长度: ${$mesText.html()?.length || 0}`);
 
         // 移除可能存在的旧图库
-        $mesText.find('.sd-gallery-wrap').remove();
+        const oldGalleries = $mesText.find('.sd-gallery-wrap');
+        if (oldGalleries.length > 0) {
+            log(`消息 ${mesId}: 移除 ${oldGalleries.length} 个旧图库`);
+            oldGalleries.remove();
+        }
 
-        // 获取段落元素
-        // 注意：这里需要根据实际 DOM 结构调整选择器
-        const paragraphElements = [];
-        $mesText.contents().each(function () {
-            if (this.nodeType === 3) { // 文本节点
-                const text = this.textContent.trim();
-                if (text) paragraphElements.push(this);
-            } else if (this.nodeType === 1) { // 元素节点
-                paragraphElements.push(this);
+        // 获取段落分隔点 - 酒馆使用 <br> 作为换行符
+        // 策略：收集所有 <br> 标签，第 N 个 <br> 后面就是第 N+1 段的开始
+        // 我们在第 N 个段落对应的 <br> 后面插入图库
+        let brElements = [];
+
+        $mesText.contents().each(function (i) {
+            if (this.nodeType === 1 && this.tagName === 'BR') {
+                brElements.push(this);
             }
         });
+
+        log(`消息 ${mesId}: 找到 ${brElements.length} 个 <br> 标签`);
+
+        // 如果没有 BR 标签，尝试直接查找
+        if (brElements.length === 0) {
+            const $brs = $mesText.find('br');
+            log(`消息 ${mesId}: 直接查找到 ${$brs.length} 个 <br> 元素`);
+            $brs.each(function () {
+                brElements.push(this);
+            });
+        }
+
+        // 记录每个 BR 的位置信息
+        brElements.forEach((br, i) => {
+            const prevText = br.previousSibling?.textContent?.trim().slice(-20) || '';
+            log(`  BR ${i}: 前文 "...${prevText}"`);
+        });
+
+        // 如果完全没有 BR 标签，使用备用策略
+        if (brElements.length === 0) {
+            log(`消息 ${mesId}: 没有找到 BR 标签，尝试按子元素分割`);
+            const directChildren = $mesText.children();
+            if (directChildren.length > 0) {
+                directChildren.each(function (i) {
+                    brElements.push(this);
+                    const preview = (this.textContent || '').trim().slice(0, 30);
+                    log(`  子元素 ${i}: <${this.tagName}> "${preview}..."`);
+                });
+            }
+        }
+
+        log(`消息 ${mesId}: 最终分隔点数量: ${brElements.length}`);
 
         // 按段落索引排序图库，从后往前插入以避免索引错乱
         const sortedGalleries = [...sdHelper.galleries]
             .sort((a, b) => b.anchor.paragraphIndex - a.anchor.paragraphIndex);
 
         sortedGalleries.forEach(gallery => {
-            const insertIndex = locateInsertPosition(paragraphElements, gallery.anchor);
             const galleryHtml = createGalleryHtml(gallery, mesId);
+            const anchorIndex = gallery.anchor.paragraphIndex;
 
-            if (insertIndex < paragraphElements.length) {
-                $(paragraphElements[insertIndex]).after(galleryHtml);
-            } else {
+            log(`  图库 ${gallery.id}: anchor=${anchorIndex}, 可用分隔点=${brElements.length}`);
+
+            if (brElements.length === 0) {
+                // 没有分隔点，直接追加到末尾
                 $mesText.append(galleryHtml);
+                log(`    → 无分隔点，追加到 .mes_text 末尾`);
+            } else if (anchorIndex < brElements.length) {
+                // 在对应的 BR 标签后面插入
+                const targetBr = brElements[anchorIndex];
+                $(targetBr).after(galleryHtml);
+                log(`    → 已插入到 BR ${anchorIndex} 之后`);
+            } else {
+                // 索引超出范围，追加到末尾
+                $mesText.append(galleryHtml);
+                log(`    → 索引超出范围，追加到 .mes_text 末尾`);
             }
         });
 
-        log(`已为消息 ${mesId} 渲染 ${sdHelper.galleries.length} 个图库`);
+        // 验证插入结果
+        const insertedGalleries = $mesText.find('.sd-gallery-wrap');
+        log(`消息 ${mesId}: 验证 - DOM 中现有 ${insertedGalleries.length} 个图库元素`);
+
+        log(`=== 完成渲染消息 ${mesId} ===`);
     }
 
     // ============================================================
@@ -795,7 +858,7 @@ highly detailed, masterpiece, best quality
             if (msg.role !== 'assistant') return;
 
             // 检查是否已有 sdHelper 数据
-            if (msg.extra?.sdHelper?.version >= DATA_VERSION) {
+            if (msg.data?.sdHelper?.version >= DATA_VERSION) {
                 log('消息已有 sdHelper 数据，跳过提取');
                 renderGalleriesForMessage(mesId);
                 return;
