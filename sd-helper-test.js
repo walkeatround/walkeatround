@@ -1846,7 +1846,10 @@ ${latestMessage}
             const result = settings.timeoutEnabled 
                 ? await withTimeout(slashPromise, settings.timeoutSeconds * 1000)
                 : await slashPromise;
-            const newUrls = (result || '').match(/(https?:\/\/|\/|output\/)[^\s"']+\.(png|jpg|jpeg|webp|gif)/gi) || [];
+            // 匹配URL时支持空格（使用[^\n"']+匹配到换行符或引号为止）
+            const rawUrls = (result || '').match(/(https?:\/\/|\/|output\/)[^\n"']+?\.(png|jpg|jpeg|webp|gif)/gi) || [];
+            // 将URL中的空格编码为%20
+            const newUrls = rawUrls.map(url => url.trim().replace(/ /g, '%20'));
             if (newUrls.length > 0) {
                 state.el.msg.text('✅ 成功');
                 const uniqueImages = [...new Set([...state.images, ...newUrls])];
@@ -2107,8 +2110,11 @@ $el.find('.sd-ui-wrap').each(function() {
     function parseBlockContent(raw) {
         const text = $('<div>').html(raw).text();
         const preventAuto = raw.includes(NO_GEN_FLAG), isScheduled = raw.includes(SCHEDULED_FLAG);
-        const urlRegex = /(https?:\/\/|\/|output\/)[^\s"']+\.(png|jpg|jpeg|webp|gif)/gi;
-        const images = text.match(urlRegex) || [];
+        // 匹配URL时支持空格（使用[^\n"']+匹配到换行符或引号为止）
+        const urlRegex = /(https?:\/\/|\/|output\/)[^\n"']+?\.(png|jpg|jpeg|webp|gif)/gi;
+        // 将URL中的空格编码为%20
+        const rawImages = text.match(urlRegex) || [];
+        const images = rawImages.map(url => url.trim().replace(/ /g, '%20'));
         let prompt = text.replace(urlRegex, '').replace(NO_GEN_FLAG, '').replace(SCHEDULED_FLAG, '').trim();
         return { prompt, images, preventAuto, isScheduled };
     }
