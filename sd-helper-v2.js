@@ -44,6 +44,101 @@
     }
 
     // ============================================================
+    // 模块 1.5: 设置与提示词模版
+    // ============================================================
+
+    // 默认提示词模版
+    const DEFAULT_TEMPLATE = `<IMAGE_PROMPT_TEMPLATE>
+You are a Visual Novel Engine. Generate story with image prompts wrapped in [IMG_GEN]...[/IMG_GEN] tags.
+
+## 人物数据库（固定特征标签 - 必须原样复制）
+<!--人物列表-->
+
+### 人物标签使用规则
+- 严格根据剧情内容决定画哪个人物，使用对应人物的固定特征标签
+- 只画剧情中实际出场的人物，不要画未出现的人物
+- 提示词插入位置必须紧跟人物出场的文本段落之后
+
+## 核心规则
+1. 每200-250字或场景/表情/动作变化时插入一个图片提示词
+2. 每个提示词只描述一个角色（禁止2girls、1boy1girl等多人标签）
+3. 人物数据库中的固定特征标签必须原样复制，不可修改
+4. 多人互动场景：分别从每个角色的视角生成单独的提示词
+5. 禁止生成URL或文件路径
+
+## 标签格式
+\`1girl/1boy, [固定特征], [表情], [服装], [姿势/动作], [视角], [环境], [光照], [质量词]\`
+
+## 质量词后缀
+highly detailed, masterpiece, best quality
+</IMAGE_PROMPT_TEMPLATE>`;
+
+    // 默认设置
+    const DEFAULT_SETTINGS = {
+        enabled: true,           // 脚本总开关
+        injectEnabled: true,     // 注入模式开关
+        injectDepth: 0,          // 注入深度（0=最底部）
+        injectRole: 'system',    // 注入角色
+        template: DEFAULT_TEMPLATE,  // 当前使用的模版
+        characters: [            // 人物特征库
+            { name: '默认人物', tags: '1girl, long hair, blue eyes', enabled: true }
+        ],
+        globalPrefix: 'best quality, masterpiece',  // 全局前缀
+        globalSuffix: '',        // 全局后缀
+    };
+
+    // 当前运行时设置
+    let settings = { ...DEFAULT_SETTINGS };
+
+    /**
+     * 构建人物列表字符串
+     */
+    function buildCharacterListString() {
+        const enabledChars = settings.characters.filter(c => c.enabled);
+        if (enabledChars.length === 0) return '（无启用的人物）';
+
+        return enabledChars.map(c => `- ${c.name}: ${c.tags}`).join('\n');
+    }
+
+    /**
+     * 获取注入的提示词（将人物列表替换进模版）
+     */
+    function getInjectPrompt() {
+        const charListString = buildCharacterListString();
+        return settings.template.replace('<!--人物列表-->', charListString);
+    }
+
+    /**
+     * 处理上下文注入（在发送给 AI 前插入模版）
+     */
+    function handleContextInjection(data) {
+        if (!settings.enabled || !settings.injectEnabled) {
+            log('注入已禁用，跳过');
+            return;
+        }
+
+        const injectPrompt = getInjectPrompt();
+        if (!injectPrompt) return;
+
+        let chat = Array.isArray(data) ? data : (data?.chat || []);
+
+        // 避免重复注入
+        if (chat.some(m => (m.content === injectPrompt || m.mes === injectPrompt))) {
+            log('模版已存在，跳过注入');
+            return;
+        }
+
+        // 在指定深度插入
+        const insertPos = Math.max(0, chat.length - settings.injectDepth);
+        chat.splice(insertPos, 0, {
+            role: settings.injectRole || 'system',
+            content: injectPrompt
+        });
+
+        log('已注入生图提示词模版');
+    }
+
+    // ============================================================
     // 模块 2: 数据结构与CRUD操作
     // ============================================================
 
@@ -753,6 +848,12 @@
      * 注册酒馆事件
      */
     function registerTavernEvents() {
+        // 监听上下文准备完成事件，注入提示词模版
+        eventOn(tavern_events.CHAT_COMPLETION_PROMPT_READY, (data) => {
+            log('CHAT_COMPLETION_PROMPT_READY - 注入提示词模版');
+            handleContextInjection(data);
+        });
+
         // 监听新消息
         eventOn(tavern_events.MESSAGE_RECEIVED, async (mesId) => {
             log('MESSAGE_RECEIVED:', mesId);
