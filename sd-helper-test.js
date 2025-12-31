@@ -1847,12 +1847,12 @@ ${latestMessage}
                 ? await withTimeout(slashPromise, settings.timeoutSeconds * 1000)
                 : await slashPromise;
             // 匹配URL：使用[^\n]匹配任意字符（除换行符），支持URL包含引号、空格、中文等任意特殊字符
-            const rawUrls = (result || '').match(/(https?:\/\/|\/|output\/)[^\n]+?\.(png|jpg|jpeg|webp|gif)/gi) || [];
-            // 将URL中的空格编码为%20
-            const newUrls = rawUrls.map(url => url.trim().replace(/ /g, '%20'));
-            if (newUrls.length > 0) {
+            const newUrls = (result || '').match(/(https?:\/\/|\/|output\/)[^\n]+?\.(png|jpg|jpeg|webp|gif)/gi) || [];
+            // 保持原始URL格式，仅清理尾部空白
+            const trimmedUrls = newUrls.map(url => url.trim());
+            if (trimmedUrls.length > 0) {
                 state.el.msg.text('✅ 成功');
-                const uniqueImages = [...new Set([...state.images, ...newUrls])];
+                const uniqueImages = [...new Set([...state.images, ...trimmedUrls])];
                 await updateChatData(state.mesId, state.blockIdx, state.prompt, uniqueImages, false, false);
                 setTimeout(() => {
                     const $newWrap = $(`.mes[mesid="${state.mesId}"] .sd-ui-wrap[data-block-idx="${state.blockIdx}"]`);
@@ -2112,9 +2112,8 @@ $el.find('.sd-ui-wrap').each(function() {
         const preventAuto = raw.includes(NO_GEN_FLAG), isScheduled = raw.includes(SCHEDULED_FLAG);
         // 匹配URL：使用[^\n]匹配任意字符（除换行符），支持URL包含引号、空格、中文等任意特殊字符
         const urlRegex = /(https?:\/\/|\/|output\/)[^\n]+?\.(png|jpg|jpeg|webp|gif)/gi;
-        // 将URL中的空格编码为%20
-        const rawImages = text.match(urlRegex) || [];
-        const images = rawImages.map(url => url.trim().replace(/ /g, '%20'));
+        // 保持原始URL格式，仅清理尾部空白
+        const images = (text.match(urlRegex) || []).map(url => url.trim());
         let prompt = text.replace(urlRegex, '').replace(NO_GEN_FLAG, '').replace(SCHEDULED_FLAG, '').trim();
         return { prompt, images, preventAuto, isScheduled };
     }
