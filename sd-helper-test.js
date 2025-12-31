@@ -1846,8 +1846,8 @@ ${latestMessage}
             const result = settings.timeoutEnabled 
                 ? await withTimeout(slashPromise, settings.timeoutSeconds * 1000)
                 : await slashPromise;
-            // 匹配URL时支持空格（使用[^\n"']+匹配到换行符或引号为止）
-            const rawUrls = (result || '').match(/(https?:\/\/|\/|output\/)[^\n"']+?\.(png|jpg|jpeg|webp|gif)/gi) || [];
+            // 匹配URL：使用[^\n]匹配任意字符（除换行符），支持URL包含引号、空格、中文等任意特殊字符
+            const rawUrls = (result || '').match(/(https?:\/\/|\/|output\/)[^\n]+?\.(png|jpg|jpeg|webp|gif)/gi) || [];
             // 将URL中的空格编码为%20
             const newUrls = rawUrls.map(url => url.trim().replace(/ /g, '%20'));
             if (newUrls.length > 0) {
@@ -2110,8 +2110,8 @@ $el.find('.sd-ui-wrap').each(function() {
     function parseBlockContent(raw) {
         const text = $('<div>').html(raw).text();
         const preventAuto = raw.includes(NO_GEN_FLAG), isScheduled = raw.includes(SCHEDULED_FLAG);
-        // 匹配URL时支持空格（使用[^\n"']+匹配到换行符或引号为止）
-        const urlRegex = /(https?:\/\/|\/|output\/)[^\n"']+?\.(png|jpg|jpeg|webp|gif)/gi;
+        // 匹配URL：使用[^\n]匹配任意字符（除换行符），支持URL包含引号、空格、中文等任意特殊字符
+        const urlRegex = /(https?:\/\/|\/|output\/)[^\n]+?\.(png|jpg|jpeg|webp|gif)/gi;
         // 将URL中的空格编码为%20
         const rawImages = text.match(urlRegex) || [];
         const images = rawImages.map(url => url.trim().replace(/ /g, '%20'));
