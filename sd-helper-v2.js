@@ -21,10 +21,27 @@
     const IMG_GEN_REGEX = /\[IMG_GEN\]([\s\S]*?)\[\/IMG_GEN\]/gi;
     const NO_GEN_FLAG = '[no_gen]';
 
+    // API 引用（在 init 时初始化）
+    let TavernHelper = null;
+    let SillyTavern = null;
+    let $ = null;
+    let toastr = null;
+    let eventOn = null;
+    let tavern_events = null;
+
     // 日志工具
     const log = (...args) => DEBUG && console.log(`[${SCRIPT_ID}]`, ...args);
     const warn = (...args) => console.warn(`[${SCRIPT_ID}]`, ...args);
     const error = (...args) => console.error(`[${SCRIPT_ID}]`, ...args);
+
+    // 显示 toast 提示
+    function showToast(type, message, options = {}) {
+        if (toastr && toastr[type]) {
+            toastr[type](message, SCRIPT_ID, { timeOut: 3000, ...options });
+        } else {
+            log(`Toast (${type}): ${message}`);
+        }
+    }
 
     // ============================================================
     // 模块 2: 数据结构与CRUD操作
@@ -923,19 +940,45 @@
     }
 
     /**
+     * 加载酒馆 API
+     * @returns {boolean} 是否成功加载所有必需的 API
+     */
+    function loadApis() {
+        const parentWin = typeof window.parent !== 'undefined' ? window.parent : window;
+
+        // 尝试从 parent 或当前 window 加载 API
+        TavernHelper = parentWin.TavernHelper || window.TavernHelper;
+        SillyTavern = parentWin.SillyTavern || window.SillyTavern;
+        $ = parentWin.jQuery || parentWin.$ || window.jQuery || window.$;
+        toastr = parentWin.toastr || window.toastr;
+        eventOn = parentWin.eventOn || window.eventOn;
+        tavern_events = parentWin.tavern_events || window.tavern_events;
+
+        // 检查必需的 API
+        const missing = [];
+        if (!TavernHelper) missing.push('TavernHelper');
+        if (!$) missing.push('jQuery');
+        if (!eventOn) missing.push('eventOn');
+        if (!tavern_events) missing.push('tavern_events');
+
+        if (missing.length > 0) {
+            log('缺少 API:', missing.join(', '));
+            return false;
+        }
+
+        log('API 加载成功');
+        return true;
+    }
+
+    /**
      * 初始化脚本
      */
     async function init() {
         log(`初始化 ${SCRIPT_ID} v${SCRIPT_VERSION}`);
 
-        // 检查依赖
-        if (typeof TavernHelper === 'undefined') {
-            error('TavernHelper 不可用，脚本无法运行');
-            return;
-        }
-
-        if (typeof eventOn === 'undefined') {
-            error('eventOn 不可用，脚本无法运行');
+        // 加载 API
+        if (!loadApis()) {
+            error('API 加载失败，脚本无法运行');
             return;
         }
 
@@ -949,13 +992,43 @@
         registerTavernEvents();
 
         log('脚本初始化完成');
+
+        // 显示成功提示
+        showToast('success', `生图助手 v${SCRIPT_VERSION} 加载成功！`);
+    }
+
+    /**
+     * 等待 API 就绪后初始化
+     */
+    function waitForApisAndInit() {
+        const maxRetries = 30; // 最多等待 30 秒
+        let retries = 0;
+
+        const checkAndInit = () => {
+            retries++;
+            log(`尝试加载 API... (${retries}/${maxRetries})`);
+
+            if (loadApis()) {
+                // API 就绪，开始初始化
+                init();
+            } else if (retries < maxRetries) {
+                // 继续等待
+                setTimeout(checkAndInit, 1000);
+            } else {
+                error('等待 API 超时，脚本无法运行');
+                console.error(`[${SCRIPT_ID}] 请确保在酒馆助手环境中运行此脚本`);
+            }
+        };
+
+        // 延迟 500ms 开始检查，给酒馆助手一些初始化时间
+        setTimeout(checkAndInit, 500);
     }
 
     // 启动
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', init);
+        document.addEventListener('DOMContentLoaded', waitForApisAndInit);
     } else {
-        init();
+        waitForApisAndInit();
     }
 
 })();
