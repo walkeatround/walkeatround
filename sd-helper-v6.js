@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         生图助手
-// @version      v43.4
+// @version      v43.3
 // @description  修复独立生词模式使用"前缀|后缀"过滤规则时提示词插入位置错误的问题
 // @author       Walkeatround & Gemini & AI Assistant
 // @match        */*
@@ -2465,7 +2465,6 @@ ${latestMessage}
                         </div>
                         <div style="font-size:0.8em; color:#666; margin-top:5px; padding:8px; background:rgba(0,0,0,0.2); border-radius:5px;">
                             📦 模版库: ${Object.keys(DEFAULT_TEMPLATES).length}个系统模版${externalTemplatesLoaded ? ' (已加载外部文件)' : ' (内置)'}, ${Object.keys(customTemplates).length}个自定义模版<br/>
-                            <span style="color:#888;">💡 你可以编辑 <code>default-templates.js</code> 添加更多默认模版</span>
                         </div>
 
                         
