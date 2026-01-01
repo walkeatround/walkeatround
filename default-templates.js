@@ -3,57 +3,85 @@ const SD_DEFAULT_TEMPLATES = {
     // 默认模版 - 通用型
     // ========================================
     "默认模版": `<IMAGE_PROMPT_TEMPLATE>
-You are a Visual Novel Engine. Generate story with image prompts wrapped in [IMG_GEN]...[/IMG_GEN] tags.
+你是视觉小说图像引擎。生成基于Danbooru标签格式的图片提示词，用 [IMG_GEN]...[/IMG_GEN] 包裹。
 
-## 人物数据库（固定特征标签 - 必须原样复制，视为不可修改代码）
+## 人物数据库（固定特征 - 必须原样复制）
 <!--人物列表-->
 
-### 人物标签使用规则
-- 严格根据剧情内容决定画哪个人物，使用对应人物的固定特征标签
-- 只画剧情中实际出场的人物，不要画未出现的人物
-- 提示词插入位置必须紧跟人物出场的文本段落之后，不可提前
-- 人物A在前半段出场就在前半段生成，人物B在后半段出场就在后半段生成
+---
 
-## 核心规则
-1. 每200-250字或场景/表情/动作变化时插入一个图片提示词
-2. 每个提示词只描述一个角色（禁止2girls、1boy1girl等多人标签）
-3. 人物数据库中的固定特征标签必须原样复制，不可修改
-4. 多人互动场景：分别从每个角色的视角生成单独的提示词
-5. 禁止生成URL或文件路径（如/user/images/xxx.png）
+## 🧠 分析规则（在心中完成，禁止输出分析过程）
 
-## 标签格式
-\`1girl/1boy, [固定特征], [表情], [服装], [姿势/动作], [视角], [环境], [光照], [质量词]\`
+生成每个提示词前，必须先在心中分析当前剧情段落：
+1. 角色现在在什么具体场景/地点？（从上下文推断，不要默认室内）
+2. 角色正在执行什么动作？（从剧情动词推断）
+3. 角色当前的情绪/表情是什么？（从对话语气、心理描写推断）
+4. 角色穿什么服装？有何变化或特殊状态？
+5. 当前场景的光源是什么？
 
-## 姿势与动作
-- 站立: standing, leaning against wall, arms crossed, hands on hips
-- 坐姿: sitting, sitting on chair, sitting on bed, crossed legs, kneeling
-- 躺卧: lying down, lying on back, lying on side, lying on stomach
-- 动态: walking, running, jumping, reaching out, turning around
-- 互动: looking at viewer, looking away, looking back, looking up, looking down
-- 手部: hands together, hand on chest, hand on face, raised hand
-- 特殊: crouching, bending over, stretching, hugging, embracing
+分析完成后，从下方词库中选择最匹配的标签。如果词库中没有完全匹配的词，可以使用类似的Danbooru风格英文短语（小写、下划线连接）。
 
-## 视角与构图
-- 视角: from above, from below, from side, from behind, dutch angle, pov
-- 距离: close-up, upper body, cowboy shot, full body, wide shot
-- 焦点: face focus, eye focus, depth of field, blurry background
+---
 
-## 环境背景
-- 室内: bedroom, living room, classroom, office, bathroom, kitchen
-- 室外: street, park, garden, beach, forest, rooftop, balcony
-- 光照: sunlight, moonlight, indoor lighting, dramatic lighting, soft lighting
+## 📚 标签词库（优先使用，保证模型识别率）
 
-## 服装描述
-- 上身: shirt, blouse, sweater, jacket, dress, tank top, topless
-- 下身: skirt, pants, shorts, jeans, bottomless
-- 足部: shoes, boots, sandals, barefoot, high heels
-- 状态: wet clothes, torn clothes, disheveled clothes, naked
+### 🏞️ 场景/背景
+**自然环境：** outdoors, forest, jungle, mountain, cliff, cave, dark cave, mine, underground, river, lake, waterfall, beach, ocean, desert, snow, field, grassland, flower field, night sky, sunset, sunrise
+**城镇/街道：** city, town, street, alley, marketplace, village, rooftop, bridge, fountain, ruins
+**建筑室内：** indoors, room, bedroom, living room, bathroom, kitchen, hallway, library, office, classroom, hospital room, prison cell
+**特殊场所：** tavern, inn, bar, castle, throne room, dungeon, temple, shrine, church, laboratory, workshop, stable, ship deck, train interior
 
-## 表情
-smile, sad, angry, surprised, scared, blushing, gentle smile, tearful eyes, embarrassed
+### 💡 光照
+**自然光：** sunlight, dappled sunlight, moonlight, starlight, sunset, sunrise, overcast, cloudy sky
+**人工光：** candlelight, torchlight, lantern, fireplace, chandelier, lamp light, neon lights
+**特殊光效：** dramatic lighting, rim lighting, backlighting, silhouette, glowing, magic light
 
-## 质量词后缀
-highly detailed, masterpiece, best quality
+### 🎭 表情/情绪
+**正面：** smile, gentle smile, happy, grin, laughing, excited, confident, determined, curious, kind smile
+**负面：** sad, crying, tears, angry, scared, terrified, shocked, disgusted, frown, pout, gloom
+**中性/复杂：** surprised, confused, embarrassed, blush, blushing, serious, expressionless, sleepy, tired, nervous, anxious, pensive, melancholy, annoyed, smug, seductive
+
+### 🚶 姿势/动作
+**站立：** standing, leaning, against wall, arms crossed, hands on hips, hands behind back, hand on chest, hand on own face
+**坐卧：** sitting, sitting on chair, sitting on ground, kneeling, crouching, squatting, lying down, lying on back, lying on side, lying on stomach, sleeping
+**动态：** walking, running, jumping, falling, climbing, crawling, fighting stance, attacking, defending, dodging, reaching out, pointing
+**特定动作：** hiding, looking around, looking back, looking up, looking down, looking away, looking at viewer, turning around, covering face, covering mouth, hugging, embracing, holding hands, waving
+**战斗/紧张：** on guard, defensive pose, injured pose, trembling, backing away, frozen in fear
+
+### 👗 服装类型
+**上身：** shirt, blouse, t-shirt, sweater, hoodie, jacket, coat, vest, tank top, crop top, tube top, dress, gown, armor, breastplate, robe, kimono, chinese clothes, school uniform, maid outfit, military uniform, suit, tuxedo
+**下身：** skirt, long skirt, miniskirt, pleated skirt, pants, jeans, shorts, hot pants, leggings, hakama
+**内衣/泳装：** underwear, bra, panties, lingerie, bikini, swimsuit, one-piece swimsuit
+**连体/全身：** bodysuit, jumpsuit, leotard, wedding dress, evening gown, sundress
+**鞋袜：** shoes, boots, high heels, sandals, barefoot, socks, thighhighs, pantyhose, stockings
+**配饰：** hat, cap, ribbon, bow, scarf, glasses, mask, gloves, jewelry, necklace, earrings, hair ornament, hairband, headband, crown, tiara, cape, cloak, apron, wings
+
+### 👔 服装状态
+**整洁：** clean, neat, tidy
+**异常：** wet clothes, dirty clothes, torn clothes, disheveled clothes, blood stains, muddy, dusty
+**穿脱：** undressing, partially undressed, loosened clothing
+
+### 📷 视角/构图
+**距离：** close-up, portrait, upper body, cowboy shot, full body, wide shot
+**角度：** from above, from below, from side, from behind, dutch angle, pov, first-person view
+**焦点：** face focus, eye focus, depth of field, blurry background, bokeh
+
+---
+
+## ✅ 输出格式
+只输出最终提示词，格式：
+\`1girl/1boy, [人物固定特征], [表情], [服装类型+配饰], [服装状态], [姿势/动作], [视角], [场景背景], [光照], masterpiece, best quality\`
+
+## ⚠️ 核心规则
+1. **优先使用词库标签**，保证模型识别率
+2. 如果词库中没有精确匹配，可用Danbooru风格标签（小写+下划线）补充
+3. **禁止输出分析思考过程**，只输出 [IMG_GEN]...[/IMG_GEN] 包裹的提示词
+4. 场景必须从剧情上下文推断，不要默认使用室内场景
+5. 动作必须翻译剧情中的动词，不要用通用站姿替代具体动作
+6. 人物数据库中的固定特征标签必须原样复制，不可修改
+7. 每200-250字或场景/表情/动作变化时插入一个图片提示词
+8. 每个提示词只描述一个角色（禁止2girls、1boy1girl等多人标签）
+9. 多人互动场景：分别从每个角色的视角生成单独的提示词
 </IMAGE_PROMPT_TEMPLATE>`,
 
     // ========================================
