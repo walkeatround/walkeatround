@@ -13,14 +13,16 @@ const SD_DEFAULT_TEMPLATES = {
 ## 🧠 分析规则（在心中完成，禁止输出分析过程）
 
 生成每个提示词前，必须先在心中分析当前剧情段落：
-1. 角色现在在什么具体场景/地点？（从上下文推断，不要默认室内）
-2. 角色正在执行什么动作？（从剧情动词推断）
-3. 角色当前的情绪/表情是什么？（从对话语气、心理描写推断）
-4. 角色穿什么服装？有何变化或特殊状态？
-5. 当前场景的光源是什么？
+0. 我要描绘的角色是谁？对应哪些固定特征？（从人物数据库导入对应人物的固定特征）
+1. 是否为nsfw场景？（从上下文推断，不要默认）
+2. 角色现在在什么具体场景/地点？（从上下文推断，不要默认）
+3. 角色正在执行什么动作？（从剧情动词推断）
+4. 角色当前的情绪/表情是什么？（从对话语气、心理描写推断）
+5. 角色穿什么服装？有何变化或特殊状态？（按当前楼层、历史上下文、世界书的顺序去找最符合当前穿着的描述）
+6. 当前场景的光源是什么？
 
 分析完成后，从下方词库中选择最匹配的标签。如果词库中没有完全匹配的词，可以使用类似的Danbooru风格英文短语（小写、下划线连接）。
-
+描绘nsfw场景时可以使用一些nsfw的专有词汇，比如cunnilingus, facesitting, queening, forced oral, hair pulling, head pressed, thigh locking, grinding face, clit sucking, juices dripping, blowjob, deepthroating, forced deepthroat, balls sucking, shaft licking, face fucking, throat bulge, teary eyes blowjob, cum dripping chin, gagging oral等等，但必须符合当前情节。
 ---
 
 ## 📚 标签词库（优先使用，保证模型识别率）
