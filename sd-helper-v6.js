@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         生图助手
-// @version      v43.3
+// @version      v43.4
 // @description  修复独立生词模式使用"前缀|后缀"过滤规则时提示词插入位置错误的问题
 // @author       Walkeatround & Gemini & AI Assistant
 // @match        */*
@@ -130,7 +130,7 @@ highly detailed, masterpiece, best quality
     let externalTemplatesLoaded = false;
 
     // 🔧 配置：模版文件的远程URL
-    const TEMPLATES_URL = 'https://testingcf.jsdelivr.net/gh/walkeatround/walkeatround@master/default-templates.js';
+    const TEMPLATES_URL = 'https://cdn.jsdelivr.net/gh/walkeatround/walkeatround@master/default-templates.js';
 
     /**
      * 从远程URL加载外部默认模版文件
