@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         生图助手
-// @version      v43.3
-// @description  修复独立生词模式使用"前缀|后缀"过滤规则时提示词插入位置错误的问题
+// @version      v43.4
+// @description  修复独立生词设置页UI，新增多图间隔与重试机制
 // @author       Walkeatround & Gemini & AI Assistant
 // @match        */*
 // @grant        none
@@ -206,6 +206,8 @@ highly detailed, masterpiece, best quality
         },
         autoRefresh: false,  // 自动刷新开关
         autoRefreshInterval: 3000, // 刷新间隔（毫秒）
+        // 生图间隔设置
+        generateIntervalSeconds: 1,   // 多图生成时每张图之间的间隔（秒）
         // 超时设置
         timeoutEnabled: false,        // 请求超时开关
         timeoutSeconds: 120,         // 超时时间（秒）
@@ -935,7 +937,7 @@ highly detailed, masterpiece, best quality
 用户会提供：世界书资料、历史对话、生词模版、以及最新剧情内容。
 你需要：分析最新剧情，在合适的位置生成Stable Diffusion提示词，以JSON格式返回结果。
 
-重要：只为【🎯 最新剧情】部分生成图片，其他部分仅供参考。`;
+重要：只为【🎯 最新剧情】部分生成图片，其他部分仅作为对人物服装、环境、姿态、表情等细节的参考。`;
     }
 
     /**
@@ -1881,34 +1883,72 @@ ${latestMessage}
             ]);
         };
 
-        try {
-            // 根据设置决定是否启用超时
-            const slashPromise = triggerSlash(cmd);
-            const result = settings.timeoutEnabled
-                ? await withTimeout(slashPromise, settings.timeoutSeconds * 1000)
-                : await slashPromise;
-            // 匹配URL：使用[^\n]匹配任意字符（除换行符），支持URL包含引号、空格、中文等任意特殊字符
-            const newUrls = (result || '').match(/(https?:\/\/|\/|output\/)[^\n]+?\.(png|jpg|jpeg|webp|gif)/gi) || [];
-            // 保持原始URL格式，仅清理尾部空白
-            const trimmedUrls = newUrls.map(url => url.trim());
-            if (trimmedUrls.length > 0) {
-                state.el.msg.text('✅ 成功');
-                const uniqueImages = [...new Set([...state.images, ...trimmedUrls])];
-                await updateChatData(state.mesId, state.blockIdx, state.prompt, uniqueImages, false, false);
-                setTimeout(() => {
-                    const $newWrap = $(`.mes[mesid="${state.mesId}"] .sd-ui-wrap[data-block-idx="${state.blockIdx}"]`);
-                    if ($newWrap.length) updateWrapperView($newWrap, uniqueImages, uniqueImages.length - 1);
-                }, 200);
-            } else { state.el.msg.text('⚠️ 无结果'); }
-        } catch (err) {
-            console.error('Generation error:', err);
-            state.el.msg.text(err.message.includes('超时') ? '⏱️ 超时' : '❌ 错误');
+        // 重试配置
+        const MAX_RETRIES = 3;
+        const RETRY_DELAY_MS = 1000;
+        let lastError = null;
+
+        for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+            try {
+                if (attempt > 1) {
+                    state.el.msg.text(`⏳ 重试中 (${attempt}/${MAX_RETRIES})...`);
+                    addLog('GENERATION', `第${attempt}次重试生图...`);
+                }
+
+                // 根据设置决定是否启用超时
+                const slashPromise = triggerSlash(cmd);
+                const result = settings.timeoutEnabled
+                    ? await withTimeout(slashPromise, settings.timeoutSeconds * 1000)
+                    : await slashPromise;
+
+                // 匹配URL：使用[^\n]匹配任意字符（除换行符），支持URL包含引号、空格、中文等任意特殊字符
+                const newUrls = (result || '').match(/(https?:\/\/|\/|output\/)[^\n]+?\.(png|jpg|jpeg|webp|gif)/gi) || [];
+                // 保持原始URL格式，仅清理尾部空白
+                const trimmedUrls = newUrls.map(url => url.trim());
+
+                if (trimmedUrls.length > 0) {
+                    state.el.msg.text('✅ 成功');
+                    const uniqueImages = [...new Set([...state.images, ...trimmedUrls])];
+                    await updateChatData(state.mesId, state.blockIdx, state.prompt, uniqueImages, false, false);
+                    setTimeout(() => {
+                        const $newWrap = $(`.mes[mesid="${state.mesId}"] .sd-ui-wrap[data-block-idx="${state.blockIdx}"]`);
+                        if ($newWrap.length) updateWrapperView($newWrap, uniqueImages, uniqueImages.length - 1);
+                    }, 200);
+                    // 成功，跳出重试循环
+                    lastError = null;
+                    break;
+                } else {
+                    // 无结果也视为需要重试的情况
+                    lastError = new Error('无结果');
+                    if (attempt < MAX_RETRIES) {
+                        addLog('GENERATION', `第${attempt}次尝试无结果，${RETRY_DELAY_MS}ms后重试...`);
+                        await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS));
+                    }
+                }
+            } catch (err) {
+                console.error(`Generation attempt ${attempt} error:`, err);
+                lastError = err;
+
+                if (attempt < MAX_RETRIES) {
+                    addLog('GENERATION', `第${attempt}次尝试失败: ${err.message}，${RETRY_DELAY_MS}ms后重试...`);
+                    await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS));
+                }
+            }
         }
-        finally {
-            state.$wrap.data('generating', false);
-            state.el.img.css('opacity', '1');
-            setTimeout(() => state.el.msg.removeClass('show'), 2000);
+
+        // 所有重试都失败后显示错误
+        if (lastError) {
+            if (lastError.message === '无结果') {
+                state.el.msg.text('⚠️ 无结果');
+            } else {
+                state.el.msg.text(lastError.message.includes('超时') ? '⏱️ 超时' : '❌ 错误');
+            }
+            addLog('GENERATION', `生图失败（已重试${MAX_RETRIES}次）: ${lastError.message}`);
         }
+
+        state.$wrap.data('generating', false);
+        state.el.img.css('opacity', '1');
+        setTimeout(() => state.el.msg.removeClass('show'), 2000);
     }
 
     function updateWrapperView($wrap, images, idx) {
@@ -2104,7 +2144,7 @@ ${latestMessage}
                                 }
                             };
                             handleGeneration(s);
-                        }, 500 + (bIdx * 1000));
+                        }, 500 + (bIdx * (settings.generateIntervalSeconds || 1) * 1000));
                     });
                 }
             });
@@ -2312,6 +2352,16 @@ ${latestMessage}
                         <small style="color: #888; display: block; margin-left: 24px; margin-top: 4px;">
                             自动识别 [IMG_GEN]...[/IMG_GEN] 标签并生成图片UI框
                         </small>
+                        <div style="margin-left: 24px; margin-top: 8px;">
+                            <label style="font-size: 12px;">
+                                多图生成间隔：
+                                <input type="number" id="sd-gen-interval" 
+                                       value="${settings.generateIntervalSeconds || 1}" 
+                                       min="0.5" max="30" step="0.5"
+                                       style="width: 60px; background: #000000;"> 秒
+                                <span style="color: #666; margin-left: 5px;">（一条消息中多张图之间的请求间隔）</span>
+                            </label>
+                        </div>
                     </div>
                     
                     <div style="margin-bottom: 12px;">
@@ -2377,6 +2427,7 @@ ${latestMessage}
                         </div>
                     </div>
                     
+                    
                     <div style="margin-bottom: 12px;">
                         <label style="display: flex; align-items: center; gap: 8px;">
                             <input type="checkbox" id="sd-auto-refresh" ${settings.autoRefresh ? 'checked' : ''}>
@@ -2398,7 +2449,7 @@ ${latestMessage}
                     
                     <hr style="border: none; border-top: 1px solid rgba(255,255,255,0.1); margin: 20px 0;">
                     
-                    <h4 style="margin-bottom:15px;">API 配置</h4>
+                    <h4 style="margin-bottom:15px;">独立API 配置</h4>
                     <div class="sd-api-row">
                         <label>Base URL</label>
                         <input type="text" id="sd-url" class="text_pole" placeholder="https://api.deepseek.com" value="${settings.llmConfig.baseUrl}">
@@ -2498,6 +2549,7 @@ ${latestMessage}
                 
                 <!-- Tab 4: 独立生图 -->
                 <div id="sd-tab-indep" class="sd-tab-content">
+                    <!-- 常用配置区 -->
                     <div style="margin-bottom: 15px; padding: 12px; background: linear-gradient(145deg, #252530, #1e1e24); border-radius: 8px; box-shadow: 3px 3px 6px var(--nm-shadow-dark), -2px -2px 5px var(--nm-shadow-light);">
                         <label style="display:block; margin-bottom:8px; font-weight:600;">🔍 过滤标签（上下文过滤）</label>
                         <textarea id="sd-indep-filter-tags" class="text_pole" placeholder="如: <small>, [statbar], <div>, 前缀|后缀（逗号分隔，可换行）" rows="3" style="width:100%; resize:vertical; font-family:monospace; font-size:0.9em;">${settings.independentApiFilterTags || ''}</textarea>
@@ -2529,39 +2581,54 @@ ${latestMessage}
                         </div>
                     </div>
                     
-                    <h4 style="margin-top:0; margin-bottom:10px;">上下文预览（最后一次分析）</h4>
-                    <div id="sd-indep-preview" style="background: rgba(0,0,0,0.3); border-radius: 5px; padding: 10px; max-height: 250px; overflow-y: auto;">
-                        <div style="margin-bottom: 10px;">
-                            <strong style="color: var(--SmartThemeQuoteColor);">最新楼层消息（已编号）：</strong>
-                            <pre id="sd-indep-latest" style="white-space: pre-wrap; font-size: 0.85em; color: #aaa; margin-top: 5px;">${independentApiLastPreview.latest || '暂无数据'}</pre>
+                    <!-- 调试与预览区 -->
+                    <div style="margin-bottom: 15px; padding: 12px; background: linear-gradient(145deg, #252530, #1e1e24); border-radius: 8px; box-shadow: 3px 3px 6px var(--nm-shadow-dark), -2px -2px 5px var(--nm-shadow-light);">
+                        <label style="display:block; margin-bottom:8px; font-weight:600;">🔍 预览与调试</label>
+                        
+                        <!-- 刷新预览按钮（放在最上面） -->
+                        <button id="sd-indep-refresh-preview" class="sd-btn-secondary" style="width:100%; margin-bottom:12px;">🔄 刷新预览</button>
+                        
+                        <!-- 上下文预览 -->
+                        <div style="margin-bottom: 12px;">
+                            <strong style="font-size: 0.9em; color: var(--SmartThemeQuoteColor);">📋 上下文预览：</strong>
+                            <div id="sd-indep-preview" style="background: rgba(0,0,0,0.3); border-radius: 5px; padding: 10px; max-height: 180px; overflow-y: auto; margin-top: 6px;">
+                                <div style="margin-bottom: 8px;">
+                                    <strong style="font-size: 0.85em;">最新楼层消息（已编号）：</strong>
+                                    <pre id="sd-indep-latest" style="white-space: pre-wrap; font-size: 0.8em; color: #aaa; margin-top: 4px;">${independentApiLastPreview.latest || '点击"刷新预览"加载'}</pre>
+                                </div>
+                                <div>
+                                    <strong style="font-size: 0.85em;">历史上下文：</strong>
+                                    <div id="sd-indep-history-list" style="font-size: 0.8em; color: #aaa; margin-top: 4px;">
+                                        ${independentApiLastPreview.history.length > 0
+                ? independentApiLastPreview.history.map((h, i) => `<div style="margin-bottom:6px; padding:4px; background:rgba(0,0,0,0.2); border-radius:3px;"><span style="color:${h.role === 'user' ? '#6cf' : '#fc6'}; font-weight:bold;">[${h.role}]</span><br/><span style="white-space:pre-wrap;">${h.content}</span></div>`).join('')
+                : '点击"刷新预览"加载'}
+                                    </div>
+                                </div>
+                            </div>
                         </div>
+                        
+                        <!-- 完整提示词预览 -->
                         <div>
-                            <strong style="color: var(--SmartThemeQuoteColor);">历史上下文：</strong>
-                            <div id="sd-indep-history-list" style="font-size: 0.85em; color: #aaa; margin-top: 5px;">
-                                ${independentApiLastPreview.history.length > 0
-                ? independentApiLastPreview.history.map((h, i) => `<div style="margin-bottom:8px; padding:5px; background:rgba(0,0,0,0.2); border-radius:3px;"><span style="color:${h.role === 'user' ? '#6cf' : '#fc6'}; font-weight:bold;">[${h.role}]</span><br/><span style="white-space:pre-wrap;">${h.content}</span></div>`).join('')
-                : '暂无数据'}
+                            <strong style="font-size: 0.9em; color: var(--SmartThemeQuoteColor);">📄 完整提示词预览：</strong>
+                            <div id="sd-indep-full-prompt" style="background: rgba(0,0,0,0.3); border-radius: 5px; padding: 10px; max-height: 180px; overflow-y: auto; margin-top: 6px;">
+                                <pre style="white-space: pre-wrap; font-size: 0.75em; color: #ccc; margin: 0;">点击"刷新预览"按钮查看完整提示词</pre>
                             </div>
                         </div>
                     </div>
                     
-                    <h4 style="margin-top:15px; margin-bottom:10px;">完整提示词预览</h4>
-                    <button id="sd-indep-refresh-preview" class="sd-btn-secondary" style="width:100%; margin-bottom:10px;">🔄 刷新预览</button>
-                    <div id="sd-indep-full-prompt" style="background: rgba(0,0,0,0.3); border-radius: 5px; padding: 10px; max-height: 300px; overflow-y: auto;">
-                        <pre style="white-space: pre-wrap; font-size: 0.8em; color: #ccc; margin: 0;">点击上方"刷新预览"按钮查看完整提示词</pre>
+                    <!-- 手动触发 -->
+                    <div style="margin-bottom: 15px; padding: 12px; background: linear-gradient(145deg, #252530, #1e1e24); border-radius: 8px; box-shadow: 3px 3px 6px var(--nm-shadow-dark), -2px -2px 5px var(--nm-shadow-light);">
+                        <button id="sd-indep-manual" class="sd-btn-secondary" style="width:100%;">🔄 手动触发独立生图</button>
+                        <small style="color: #888; display: block; margin-top: 5px;">对最新一条AI消息手动执行独立生图流程</small>
                     </div>
                     
-                    <button id="sd-indep-manual" class="sd-btn-secondary" style="width:100%; margin-top:15px;">🔄 手动触发独立生图</button>
-                    <small style="color: #888; display: block; margin-top: 5px;">对最新一条AI消息手动执行独立生图流程</small>
-                    
-                    <h4 style="margin-top:20px; margin-bottom:10px;">
-                        <span id="sd-indep-prompt-toggle" style="cursor:pointer; user-select:none;">▶ 自定义系统提示词</span>
-                    </h4>
-                    <div id="sd-indep-prompt-editor" style="display:none;">
+                    <!-- 自定义系统提示词 -->
+                    <div style="margin-bottom: 15px; padding: 12px; background: linear-gradient(145deg, #252530, #1e1e24); border-radius: 8px; box-shadow: 3px 3px 6px var(--nm-shadow-dark), -2px -2px 5px var(--nm-shadow-light);">
+                        <label style="display:block; margin-bottom:8px; font-weight:600;">⚙️ 自定义系统提示词</label>
                         <small style="color: #888; display: block; margin-bottom: 8px;">留空则使用默认系统提示词。自定义后会完全替换默认的通用规则部分。</small>
-                        <textarea id="sd-indep-custom-prompt" class="text_pole" rows="12" style="width:100%; font-family:monospace; font-size:0.85em;">${settings.independentApiCustomPrompt || ''}</textarea>
+                        <textarea id="sd-indep-custom-prompt" class="text_pole" rows="8" style="width:100%; font-family:monospace; font-size:0.85em;">${settings.independentApiCustomPrompt || ''}</textarea>
                         <div style="display:flex; gap:10px; margin-top:10px;">
-                            <button id="sd-indep-prompt-reset" class="sd-btn-secondary" style="flex:1;">恢复默认提示词</button>
+                            <button id="sd-indep-prompt-reset" class="sd-btn-secondary" style="flex:1;">恢复默认</button>
                             <button id="sd-indep-prompt-save" class="sd-btn-primary" style="flex:1;">保存提示词</button>
                         </div>
                     </div>
@@ -2694,19 +2761,6 @@ ${latestMessage}
                 saveCurrentCharacterWorldbookSelection(selection);
                 const totalEntries = Object.values(selection).reduce((sum, arr) => sum + arr.length, 0);
                 toastr.success(`✅ 已保存 ${totalEntries} 个世界书条目选择`);
-            });
-
-            // 系统提示词编辑器展开/收缩
-            $('#sd-indep-prompt-toggle').on('click', function () {
-                const $editor = $('#sd-indep-prompt-editor');
-                const $toggle = $(this);
-                if ($editor.is(':visible')) {
-                    $editor.slideUp(200);
-                    $toggle.text('▶ 自定义系统提示词');
-                } else {
-                    $editor.slideDown(200);
-                    $toggle.text('▼ 自定义系统提示词');
-                }
             });
 
             // 保存自定义系统提示词
@@ -3132,6 +3186,7 @@ ${latestMessage}
                 settings.globalNegative = $('#sd-neg').val();
                 settings.autoRefresh = $('#sd-auto-refresh').prop('checked'); //读取自动刷新配置
                 settings.autoRefreshInterval = parseInt($('#sd-auto-refresh-interval').val()) * 1000;
+                settings.generateIntervalSeconds = parseFloat($('#sd-gen-interval').val()) || 1;
 
                 // 超时设置
                 settings.timeoutEnabled = $('#sd-timeout-en').is(':checked');
