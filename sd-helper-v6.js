@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         生图助手
-// @version      v43.4
-// @description  修复独立生词设置页UI，新增多图间隔与重试机制
+// @version      v43.5
+// @description  修复手动生词按钮可独立使用，不再依赖独立API模式开关
 // @author       Walkeatround & Gemini & AI Assistant
 // @match        */*
 // @grant        none
@@ -1418,7 +1418,14 @@ ${latestMessage}
      */
     async function handleIndependentApiGeneration(mesId) {
         if (!settings.independentApiEnabled || !settings.enabled) return;
+        await executeImagePromptGeneration(mesId);
+    }
 
+    /**
+     * 执行图片提示词生成的核心逻辑
+     * @param {number} mesId - 消息ID
+     */
+    async function executeImagePromptGeneration(mesId) {
         const chat = SillyTavern.chat;
         if (!chat || !chat[mesId]) {
             addLog('WARN', `消息${mesId}不存在`);
@@ -3387,13 +3394,9 @@ ${latestMessage}
                 // 刷新UI
                 processChatDOM();
 
-                // 延迟后执行独立API生图
+                // 延迟后执行生词（手动触发，不依赖任何开关）
                 setTimeout(() => {
-                    if (settings.independentApiEnabled && settings.enabled) {
-                        handleIndependentApiGeneration(latestAiMesId);
-                    } else {
-                        toastr.warning('⚠️ 请先在设置中启用"独立生图模式"');
-                    }
+                    executeImagePromptGeneration(latestAiMesId);
                 }, 500);
 
             } catch (e) {
