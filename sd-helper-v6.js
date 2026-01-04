@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         生图助手
-// @version      v43.6
-// @description  用户可自定义失败重试次数间隔
+// @version      v43.7
+// @description  修复手动生词按钮可独立使用，不再依赖独立API模式开关
 // @author       Walkeatround & Gemini & AI Assistant
 // @match        */*
 // @grant        none
@@ -2199,7 +2199,17 @@ ${latestMessage}
 
 
     function parseBlockContent(raw) {
-        const text = $('<div>').html(raw).text();
+        // 手动处理 HTML 实体解码，避免 jQuery .text() 过滤掉 <lora:xxx> 等 SD 标签
+        const text = raw
+            .replace(/<br\s*\/?>/gi, '\n')           // <br> 转换行
+            .replace(/<\/?(?:p|div|span)[^>]*>/gi, '') // 移除常见 HTML 容器标签
+            .replace(/&lt;/g, '<')                   // HTML 实体解码
+            .replace(/&gt;/g, '>')
+            .replace(/&amp;/g, '&')
+            .replace(/&quot;/g, '"')
+            .replace(/&#39;/g, "'")
+            .replace(/&nbsp;/g, ' ');
+        
         const preventAuto = raw.includes(NO_GEN_FLAG), isScheduled = raw.includes(SCHEDULED_FLAG);
         // 匹配URL：使用[^\n]匹配任意字符（除换行符），支持URL包含引号、空格、中文等任意特殊字符
         const urlRegex = /(https?:\/\/|\/|output\/)[^\n]+?\.(png|jpg|jpeg|webp|gif)/gi;
@@ -2319,15 +2329,33 @@ ${latestMessage}
     function renderCharacterList() {
         let html = '';
         settings.characters.forEach((char, idx) => {
+            // 使用 data-* 属性存储原始值，避免 value 属性被 HTML 自动转义（如 < 变成 &lt;）
+            const escapedName = encodeURIComponent(char.name || '');
+            const escapedTags = encodeURIComponent(char.tags || '');
             html += `
                 <div class="sd-char-row" data-idx="${idx}">
                     <input type="checkbox" class="sd-char-checkbox" ${char.enabled ? 'checked' : ''} />
-                    <input type="text" class="sd-char-name text_pole" placeholder="人物名称" value="${char.name}" />
-                    <input type="text" class="sd-char-tags text_pole" placeholder="固定特征词 (如: long hair, blue eyes)" value="${char.tags}" />
+                    <input type="text" class="sd-char-name text_pole" placeholder="人物名称" data-raw="${escapedName}" />
+                    <input type="text" class="sd-char-tags text_pole" placeholder="固定特征词 (如: long hair, blue eyes, <lora:xxx>)" data-raw="${escapedTags}" />
                     <button class="sd-char-del">删除</button>
                 </div>`;
         });
         return html;
+    }
+    
+    // 渲染人物列表后，使用 jQuery 设置真实值（避免 HTML 转义）
+    function initCharacterListValues() {
+        $('#sd-char-list .sd-char-row').each(function() {
+            const $row = $(this);
+            const nameRaw = $row.find('.sd-char-name').data('raw');
+            const tagsRaw = $row.find('.sd-char-tags').data('raw');
+            if (nameRaw !== undefined) {
+                $row.find('.sd-char-name').val(decodeURIComponent(nameRaw));
+            }
+            if (tagsRaw !== undefined) {
+                $row.find('.sd-char-tags').val(decodeURIComponent(tagsRaw));
+            }
+        });
     }
 
     function openSettingsPopup() {
@@ -2678,6 +2706,10 @@ ${latestMessage}
                 $(this).addClass('active');
                 $(`#sd-tab-${$(this).data('tab')}`).addClass('active');
             });
+
+            // 初始化人物列表输入框的值（避免 HTML 转义问题）
+            initCharacterListValues();
+
 
             // 导出配置
             $('#sd-export').on('click', () => {
