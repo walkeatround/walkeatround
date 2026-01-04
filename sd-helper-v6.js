@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         生图助手
-// @version      v43.5
-// @description  修复手动生词按钮可独立使用，不再依赖独立API模式开关
+// @version      v43.6
+// @description  用户可自定义失败重试次数间隔
 // @author       Walkeatround & Gemini & AI Assistant
 // @match        */*
 // @grant        none
@@ -208,6 +208,9 @@ highly detailed, masterpiece, best quality
         autoRefreshInterval: 3000, // 刷新间隔（毫秒）
         // 生图间隔设置
         generateIntervalSeconds: 1,   // 多图生成时每张图之间的间隔（秒）
+        // 重试设置
+        retryCount: 3,                // 生图失败后重试次数
+        retryDelaySeconds: 1,         // 每次重试的间隔（秒）
         // 超时设置
         timeoutEnabled: false,        // 请求超时开关
         timeoutSeconds: 120,         // 超时时间（秒）
@@ -1890,9 +1893,9 @@ ${latestMessage}
             ]);
         };
 
-        // 重试配置
-        const MAX_RETRIES = 3;
-        const RETRY_DELAY_MS = 1000;
+        // 重试配置（使用用户设置）
+        const MAX_RETRIES = settings.retryCount || 3;
+        const RETRY_DELAY_MS = (settings.retryDelaySeconds || 1) * 1000;
         let lastError = null;
 
         for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
@@ -2359,16 +2362,32 @@ ${latestMessage}
                         <small style="color: #888; display: block; margin-left: 24px; margin-top: 4px;">
                             自动识别 [IMG_GEN]...[/IMG_GEN] 标签并生成图片UI框
                         </small>
-                        <div style="margin-left: 24px; margin-top: 8px;">
-                            <label style="font-size: 12px;">
-                                多图生成间隔：
-                                <input type="number" id="sd-gen-interval" 
+                        <div style="margin-left: 24px; margin-top: 8px; display: flex; flex-wrap: wrap; gap: 15px; align-items: center;">
+                            <label style="font-size: 12px; display: flex; align-items: center; gap: 5px;">
+                                <span style="color: var(--nm-text-muted);">多图间隔:</span>
+                                <input type="number" id="sd-gen-interval" class="text_pole"
                                        value="${settings.generateIntervalSeconds || 1}" 
                                        min="0.5" max="30" step="0.5"
-                                       style="width: 60px; background: #000000;"> 秒
-                                <span style="color: #666; margin-left: 5px;">（一条消息中多张图之间的请求间隔）</span>
+                                       style="width: 55px;"> <span style="color: var(--nm-text-muted);">秒</span>
+                            </label>
+                            <label style="font-size: 12px; display: flex; align-items: center; gap: 5px;">
+                                <span style="color: var(--nm-text-muted);">重试次数:</span>
+                                <input type="number" id="sd-retry-count" class="text_pole"
+                                       value="${settings.retryCount || 3}" 
+                                       min="0" max="10" step="1"
+                                       style="width: 50px;"> <span style="color: var(--nm-text-muted);">次</span>
+                            </label>
+                            <label style="font-size: 12px; display: flex; align-items: center; gap: 5px;">
+                                <span style="color: var(--nm-text-muted);">重试间隔:</span>
+                                <input type="number" id="sd-retry-delay" class="text_pole"
+                                       value="${settings.retryDelaySeconds || 1}" 
+                                       min="0.5" max="30" step="0.5"
+                                       style="width: 55px;"> <span style="color: var(--nm-text-muted);">秒</span>
                             </label>
                         </div>
+                        <small style="color: #666; display: block; margin-left: 24px; margin-top: 4px;">
+                            多图间隔：一条消息中多张图之间的请求间隔；重试：生图失败时自动重试的次数和间隔
+                        </small>
                     </div>
                     
                     <div style="margin-bottom: 12px;">
@@ -3194,6 +3213,8 @@ ${latestMessage}
                 settings.autoRefresh = $('#sd-auto-refresh').prop('checked'); //读取自动刷新配置
                 settings.autoRefreshInterval = parseInt($('#sd-auto-refresh-interval').val()) * 1000;
                 settings.generateIntervalSeconds = parseFloat($('#sd-gen-interval').val()) || 1;
+                settings.retryCount = parseInt($('#sd-retry-count').val()) || 3;
+                settings.retryDelaySeconds = parseFloat($('#sd-retry-delay').val()) || 1;
 
                 // 超时设置
                 settings.timeoutEnabled = $('#sd-timeout-en').is(':checked');
