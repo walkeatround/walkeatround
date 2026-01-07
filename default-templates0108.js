@@ -126,6 +126,7 @@ You MUST perform this multi-step analysis and self-correction process internally
 * **Expression:** Infer emotion from dialogue and inner monologue.
 * **Character Count:** Determine correct character_count_tags (e.g., 1girl, 1boy, 2girls, 1girl 1boy).
 * **NSFW/Special:** Is this a sexual or violent scene? If yes, apply relevant specific tags.
+* **Environment (Completeness Principle):** Your environment tags must be detailed enough that someone reading ONLY the tags could reconstruct the scene accurately. If any detail from the text is missing that could cause misinterpretation, add it.
 
 **Step 3: Pre-computation Self-Correction**
 * *Audit:* "Did I specify clothing for upper body?" → If no or empty, add appropriate tag (bare or specific item with color).
@@ -133,6 +134,7 @@ You MUST perform this multi-step analysis and self-correction process internally
 * *Audit:* "Did I specify footwear?" → If no or empty, add appropriate tag (barefoot or specific footwear with color).
 * *Audit:* "Is the clothing consistent with the previous context?" → If no, revert to the established outfit.
 * *Audit:* "Are there conflicting tags (e.g., indoors AND outdoors)?" → Remove the incorrect one.
+* *Audit:* "Could my environment tags be misinterpreted? Is any key detail missing?" → Add missing details.
 ---
 ## 👗 Clothing Tag Examples (MANDATORY - Choose One Per Body Part)
 
