@@ -515,11 +515,44 @@ highly detailed, masterpiece, best quality
             const data = await res.json();
             addLog('API', `响应成功`);
 
-            // 兼容推理模型（如deepseek-reasoner）和普通模型
-            const message = data.choices?.[0]?.message;
-            const content = message?.content?.trim() || message?.reasoning_content?.trim();
+            // 调试日志：打印完整响应结构
+            addLog('API', `响应结构: ${JSON.stringify(data).substring(0, 500)}`);
+
+            // 兼容多种API响应格式
+            let content = null;
+
+            // 格式1: OpenAI标准格式 - choices[0].message.content
+            if (data.choices?.[0]?.message?.content) {
+                content = data.choices[0].message.content.trim();
+            }
+            // 格式2: 推理模型格式 - choices[0].message.reasoning_content
+            else if (data.choices?.[0]?.message?.reasoning_content) {
+                content = data.choices[0].message.reasoning_content.trim();
+            }
+            // 格式3: 简化格式 - choices[0].text
+            else if (data.choices?.[0]?.text) {
+                content = data.choices[0].text.trim();
+            }
+            // 格式4: 直接content字段
+            else if (data.content) {
+                content = data.content.trim();
+            }
+            // 格式5: output字段（某些API）
+            else if (data.output) {
+                content = data.output.trim();
+            }
+            // 格式6: response字段
+            else if (data.response) {
+                content = data.response.trim();
+            }
+            // 格式7: result字段
+            else if (data.result) {
+                content = typeof data.result === 'string' ? data.result.trim() : JSON.stringify(data.result);
+            }
+
             if (!content) {
-                throw new Error("API返回内容为空");
+                addLog('ERROR', `无法解析API响应，完整数据: ${JSON.stringify(data)}`);
+                throw new Error("API返回内容为空（响应格式不兼容）");
             }
 
             return content;
@@ -575,11 +608,28 @@ highly detailed, masterpiece, best quality
             const data = await res.json();
             addLog('API', `模版修改成功`);
 
-            // 兼容推理模型（如deepseek-reasoner）和普通模型
-            const message = data.choices?.[0]?.message;
-            const content = message?.content?.trim() || message?.reasoning_content?.trim();
+            // 兼容多种API响应格式
+            let content = null;
+
+            if (data.choices?.[0]?.message?.content) {
+                content = data.choices[0].message.content.trim();
+            } else if (data.choices?.[0]?.message?.reasoning_content) {
+                content = data.choices[0].message.reasoning_content.trim();
+            } else if (data.choices?.[0]?.text) {
+                content = data.choices[0].text.trim();
+            } else if (data.content) {
+                content = data.content.trim();
+            } else if (data.output) {
+                content = data.output.trim();
+            } else if (data.response) {
+                content = data.response.trim();
+            } else if (data.result) {
+                content = typeof data.result === 'string' ? data.result.trim() : JSON.stringify(data.result);
+            }
+
             if (!content) {
-                throw new Error("API返回内容为空");
+                addLog('ERROR', `无法解析API响应: ${JSON.stringify(data)}`);
+                throw new Error("API返回内容为空（响应格式不兼容）");
             }
 
             return content;
@@ -1162,12 +1212,30 @@ Order
 
             const data = await res.json();
             addLog('INDEP_API', `独立API响应成功`);
+            addLog('INDEP_API', `响应结构: ${JSON.stringify(data).substring(0, 500)}`);
 
-            // 兼容推理模型（如deepseek-reasoner）和普通模型
-            const message = data.choices?.[0]?.message;
-            const content = message?.content?.trim() || message?.reasoning_content?.trim();
+            // 兼容多种API响应格式
+            let content = null;
+
+            if (data.choices?.[0]?.message?.content) {
+                content = data.choices[0].message.content.trim();
+            } else if (data.choices?.[0]?.message?.reasoning_content) {
+                content = data.choices[0].message.reasoning_content.trim();
+            } else if (data.choices?.[0]?.text) {
+                content = data.choices[0].text.trim();
+            } else if (data.content) {
+                content = data.content.trim();
+            } else if (data.output) {
+                content = data.output.trim();
+            } else if (data.response) {
+                content = data.response.trim();
+            } else if (data.result) {
+                content = typeof data.result === 'string' ? data.result.trim() : JSON.stringify(data.result);
+            }
+
             if (!content) {
-                throw new Error("API返回内容为空");
+                addLog('ERROR', `无法解析API响应，完整数据: ${JSON.stringify(data)}`);
+                throw new Error("API返回内容为空（响应格式不兼容）");
             }
 
             // 解析JSON
@@ -3150,16 +3218,19 @@ Order
                 $btn.prop('disabled', true).text('⏳ 测试中...');
 
                 try {
+                    // 读取界面上的实际设置值
                     const testConfig = {
                         baseUrl: url,
                         apiKey: key,
                         model: model,
-                        maxTokens: 50,
-                        temperature: 0.7,
-                        topP: 1.0,
-                        frequencyPenalty: 0.0,
-                        presencePenalty: 0.0
+                        maxTokens: parseInt($('#sd-max-tokens').val()) || 500,
+                        temperature: parseFloat($('#sd-temp').val()) || 0.7,
+                        topP: parseFloat($('#sd-top-p').val()) || 1.0,
+                        frequencyPenalty: parseFloat($('#sd-freq-pen').val()) || 0.0,
+                        presencePenalty: parseFloat($('#sd-pres-pen').val()) || 0.0
                     };
+
+                    addLog('API', `测试配置: maxTokens=${testConfig.maxTokens}, temp=${testConfig.temperature}`);
 
                     const oldConfig = settings.llmConfig;
                     settings.llmConfig = testConfig;
