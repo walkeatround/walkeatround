@@ -130,7 +130,7 @@ highly detailed, masterpiece, best quality
     let externalTemplatesLoaded = false;
 
     // 🔧 配置：模版文件的远程URL
-    const TEMPLATES_URL = 'https://cdn.jsdelivr.net/gh/walkeatround/walkeatround@master/default-templates0108.js';
+    const TEMPLATES_URL = 'https://cdn.jsdelivr.net/gh/walkeatround/walkeatround@master/default-templates0109.js';
 
     /**
      * 从远程URL加载外部默认模版文件
