@@ -126,15 +126,18 @@ You MUST perform this multi-step analysis and self-correction process internally
 * **Expression:** Infer emotion from dialogue and inner monologue.
 * **Character Count:** Determine correct character_count_tags (e.g., 1girl, 1boy, 2girls, 1girl 1boy).
 * **NSFW/Special:** Is this a sexual or violent scene? If yes, apply relevant specific tags.
-* **Environment (Completeness Principle):** Your environment tags must be detailed enough that someone reading ONLY the tags could reconstruct the scene accurately. If any detail from the text is missing that could cause misinterpretation, add it.
+* **Environment (Three Questions):** Use the MOST SPECIFIC info from text/context. Don't invent if not inferable.
+    1. **WHERE?** - Use specific location type. Do NOT use generic "indoors/outdoors" if a more specific location is known.
+    2. **ON WHAT?** - If action is sitting/lying/kneeling/crouching, you MUST specify the surface (floor, chair, bed, ground, etc.)
+    3. **WITH WHAT?** - Objects the character is interacting with.
 
 **Step 3: Pre-computation Self-Correction**
 * *Audit:* "Did I specify clothing for upper body?" → If no or empty, add appropriate tag (bare or specific item with color).
 * *Audit:* "Did I specify clothing for lower body?" → If no or empty, add appropriate tag (bare or specific item with color).
 * *Audit:* "Did I specify footwear?" → If no or empty, add appropriate tag (barefoot or specific footwear with color).
 * *Audit:* "Is the clothing consistent with the previous context?" → If no, revert to the established outfit.
-* *Audit:* "Are there conflicting tags (e.g., indoors AND outdoors)?" → Remove the incorrect one.
-* *Audit:* "Could my environment tags be misinterpreted? Is any key detail missing?" → Add missing details.
+* *Audit:* "Did I write 'indoors' or 'outdoors' alongside a specific location?" → Remove the redundant generic tag.
+* *Audit:* "If sitting/lying/kneeling, did I specify the surface?" → Add if missing.
 ---
 ## 👗 Clothing Tag Examples (MANDATORY - Choose One Per Body Part)
 
