@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         生图助手
-// @version      v43.8
-// @description  优化独立API提示词结构（拆分System/Assistant消息、增强格式约束）；移除无效的UI设置
+// @version      v43.9
+// @description  增加顺序生图
 // @author       Walkeatround & Gemini & AI Assistant
 // @match        */*
 // @grant        none
