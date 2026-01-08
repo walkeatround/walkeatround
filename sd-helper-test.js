@@ -339,6 +339,13 @@ highly detailed, masterpiece, best quality
     .sd-placeholder.requesting { color: var(--nm-accent) !important; animation: sd-pulse 1.5s ease-in-out infinite; }
     @keyframes sd-pulse { 0%, 100% { opacity: 0.6; } 50% { opacity: 1; } }
     
+    /* 可折叠子设置样式 */
+    .sd-toggle-arrow { display: inline-block; width: 16px; text-align: center; cursor: pointer; transition: transform 0.2s ease; color: var(--nm-text-muted); font-size: 10px; margin-left: 4px; }
+    .sd-toggle-arrow:hover { color: var(--nm-accent); }
+    .sd-toggle-arrow.collapsed { transform: rotate(-90deg); }
+    .sd-sub-settings { margin-left: 24px; margin-top: 8px; padding: 10px 12px; background: var(--nm-bg); border-radius: var(--nm-radius-sm); box-shadow: inset 2px 2px 5px var(--nm-shadow-dark), inset -1px -1px 4px var(--nm-shadow-light); overflow: hidden; transition: all 0.25s ease; max-height: 500px; opacity: 1; }
+    .sd-sub-settings.collapsed { max-height: 0; padding: 0 12px; margin-top: 0; opacity: 0; }
+    
     /* 新拟态输入框样式 - 仅限弹窗内 */
     .sd-settings-popup .text_pole { background: var(--nm-bg) !important; border: none !important; color: var(--nm-text) !important; padding: 10px 12px !important; border-radius: var(--nm-radius-sm) !important; box-shadow: inset 2px 2px 5px var(--nm-shadow-dark), inset -1px -1px 4px var(--nm-shadow-light) !important; font-family: 'Georgia', 'Times New Roman', 'Noto Serif SC', serif !important; transition: all 0.2s !important; }
     .sd-settings-popup .text_pole:focus { outline: none !important; box-shadow: inset 2px 2px 5px var(--nm-shadow-dark), inset -1px -1px 4px var(--nm-shadow-light), 0 0 10px var(--nm-accent-glow) !important; }
@@ -2222,10 +2229,8 @@ Order
                             });
                             addLog('SEQUENTIAL', `任务加入队列: ${taskKey}, 当前队列长度: ${sequentialQueue.length}`);
                         }
-                        // 标记为 scheduled 状态
+                        // 标记为 scheduled 状态（不在这里启动队列，等所有任务加入后再统一启动）
                         updateChatData(mesId, bIdx, decodeURIComponent($w.attr('data-prompt')), [], false, true);
-                        // 启动队列处理
-                        processSequentialQueue();
                     } else {
                         // 原有并行模式逻辑
                         updateChatData(mesId, bIdx, decodeURIComponent($w.attr('data-prompt')), [], false, true).then(() => {
@@ -2248,6 +2253,11 @@ Order
                 }
             });
         });
+
+        // 顺序生图模式：等所有任务加入队列后再统一启动处理
+        if (settings.sequentialGeneration && sequentialQueue.length > 0 && !sequentialProcessing) {
+            setTimeout(() => processSequentialQueue(), 100);
+        }
     }
 
 
@@ -2568,11 +2578,12 @@ Order
                         <label style="display: flex; align-items: center; gap: 8px;">
                             <input type="checkbox" id="sd-en" ${settings.enabled ? 'checked' : ''}>
                             <span style="font-weight: bold;">启用解析生图</span>
+                            <span class="sd-toggle-arrow" data-target="sd-sub-en">▾</span>
                         </label>
                         <small style="color: #888; display: block; margin-left: 24px; margin-top: 4px;">
                             自动识别 [IMG_GEN]...[/IMG_GEN] 标签并生成图片UI框
                         </small>
-                        <div style="margin-left: 24px; margin-top: 8px; display: flex; flex-wrap: wrap; gap: 15px; align-items: center;">
+                        <div id="sd-sub-en" class="sd-sub-settings" style="display: flex; flex-wrap: wrap; gap: 15px; align-items: center;">
                             <label style="font-size: 10px; display: flex; align-items: center; gap: 5px;">
                                 <span style="color: var(--nm-text-muted);">多图间隔:</span>
                                 <input type="number" id="sd-gen-interval" class="text_pole"
@@ -2594,21 +2605,22 @@ Order
                                        min="0.5" max="30" step="0.5"
                                        style="width: 40px;"> <span style="color: var(--nm-text-muted);">秒</span>
                             </label>
+                            <small style="color: #666; display: block; width: 100%; margin-top: 4px;">
+                                多图间隔：多张图之间的请求间隔；重试：失败时自动重试的次数和间隔
+                            </small>
                         </div>
-                        <small style="color: #666; display: block; margin-left: 24px; margin-top: 4px;">
-                            多图间隔：多张图之间的请求间隔；重试：失败时自动重试的次数和间隔
-                        </small>
                     </div>
                     
                     <div style="margin-bottom: 12px;">
                         <label style="display: flex; align-items: center; gap: 8px;">
                             <input type="checkbox" id="sd-inj-en" ${settings.injectEnabled ? 'checked' : ''}>
                             <span style="font-weight: bold;">启用注入</span>
+                            <span class="sd-toggle-arrow" data-target="sd-sub-inj">▾</span>
                         </label>
                         <small style="color: #888; display: block; margin-left: 24px; margin-top: 4px;">
                             向AI发送请求前，自动注入提示词模版和人物特征库
                         </small>
-                        <div style="margin-left: 24px; margin-top: 8px; display: flex; align-items: center; gap: 15px;">
+                        <div id="sd-sub-inj" class="sd-sub-settings" style="display: flex; align-items: center; gap: 15px;">
                             <label style="font-size: 12px;">
                                 注入深度：
                                 <input type="number" id="sd-inj-depth" class="text_pole" value="${settings.injectDepth}" min="0" max="20" style="width:60px;">
@@ -2628,11 +2640,12 @@ Order
                         <label style="display: flex; align-items: center; gap: 8px;">
                             <input type="checkbox" id="sd-indep-en" ${settings.independentApiEnabled ? 'checked' : ''}>
                             <span style="font-weight: bold;">启用独立生图模式</span>
+                            <span class="sd-toggle-arrow" data-target="sd-sub-indep">▾</span>
                         </label>
                         <small style="color: #888; display: block; margin-left: 24px; margin-top: 4px;">
                             开启后停止注入，改为消息接收后调用独立API分析并插入提示词
                         </small>
-                        <div style="margin-left: 24px; margin-top: 8px; display: flex; align-items: center; gap: 15px;">
+                        <div id="sd-sub-indep" class="sd-sub-settings" style="display: flex; align-items: center; gap: 15px;">
                             <label style="font-size: 12px;">
                                 历史消息数：
                                 <input type="number" id="sd-indep-history" class="text_pole" value="${settings.independentApiHistoryCount}" min="1" max="10" style="width:60px;">
@@ -2648,11 +2661,12 @@ Order
                         <label style="display: flex; align-items: center; gap: 8px;">
                             <input type="checkbox" id="sd-timeout-en" ${settings.timeoutEnabled ? 'checked' : ''}>
                             <span style="font-weight: bold;">启用请求超时</span>
+                            <span class="sd-toggle-arrow" data-target="sd-sub-timeout">▾</span>
                         </label>
                         <small style="color: #888; display: block; margin-left: 24px; margin-top: 4px;">
                             生图请求超过指定时间后自动取消再重试，避免永远卡在"请求中"
                         </small>
-                        <div style="margin-left: 24px; margin-top: 8px;">
+                        <div id="sd-sub-timeout" class="sd-sub-settings">
                             <label style="font-size: 12px;">
                                 超时时间(秒)：
                                 <input type="number" id="sd-timeout-seconds" class="text_pole" 
@@ -2886,6 +2900,15 @@ Order
             // 初始化人物列表输入框的值（避免 HTML 转义问题）
             initCharacterListValues();
 
+            // 折叠箭头点击事件
+            $('.sd-toggle-arrow').on('click', function () {
+                const $arrow = $(this);
+                const targetId = $arrow.data('target');
+                const $target = $(`#${targetId}`);
+
+                $arrow.toggleClass('collapsed');
+                $target.toggleClass('collapsed');
+            });
 
             // 导出配置
             $('#sd-export').on('click', () => {
