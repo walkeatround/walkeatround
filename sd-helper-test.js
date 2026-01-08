@@ -130,7 +130,7 @@ highly detailed, masterpiece, best quality
     let externalTemplatesLoaded = false;
 
     // 🔧 配置：模版文件的远程URL
-    const TEMPLATES_URL = 'https://cdn.jsdelivr.net/gh/walkeatround/walkeatround@master/default-templates01080225.js';
+    const TEMPLATES_URL = 'https://cdn.jsdelivr.net/gh/walkeatround/walkeatround@master/default-templates01090300.js';
 
     /**
      * 从远程URL加载外部默认模版文件
@@ -224,7 +224,9 @@ highly detailed, masterpiece, best quality
         worldbookEnabled: true,            // 是否启用世界书注入
         worldbookSelections: {},           // 按角色存储的世界书条目选择 { 'characterName': { 'bookName': ['entryUid1', 'entryUid2'] } }
         // 顺序生图
-        sequentialGeneration: false        // 顺序生图开关：开启后一张生成完再生成下一张
+        sequentialGeneration: false,       // 顺序生图开关：开启后一张生成完再生成下一张
+        // 流式生图
+        streamingGeneration: false         // 流式生图开关：开启后在酒馆流式生成期间实时检测并生图
     };
 
     let settings = DEFAULT_SETTINGS;
@@ -244,6 +246,16 @@ highly detailed, masterpiece, best quality
 
     // Scheduled 超时计时器 Map (key: "mesId-blockIdx", value: timeoutId)
     const scheduledTimeoutMap = new Map();
+
+    // 流式生图状态管理
+    let streamingImageState = {
+        isStreaming: false,           // 是否在流式中
+        isGenerating: false,          // 是否正在生图（暂停监听）
+        mesId: null,                  // 当前消息ID
+        processedCount: 0,            // 已处理的提示词数量
+        results: [],                  // [{prompt, url, index}] 已获取的结果
+        currentAbortController: null  // 用于取消当前生图
+    };
 
     // --- CSS ---
     const GLOBAL_CSS = `
@@ -1466,7 +1478,7 @@ Order
      * @returns {Object} - toastr对象
      */
     function showIndependentApiProgress(message) {
-        return toastr.info(message + '<br><small style="color: #ffcc00; opacity: 0.9;">⏹️ 点击此处终止</small>', '🎨 独立API生图', {
+        return toastr.info(message + '<br><small style="color: #ffcc00; opacity: 0.9;">⏹️ 点击此处终止</small>', '🎨 独立API生词', {
             timeOut: 0,
             extendedTimeOut: 0,
             closeButton: true,
@@ -2425,7 +2437,7 @@ Order
                     <div class="sd-zone delete" style="display:${has ? 'block' : 'none'}"></div>
                     <div class="sd-ui-msg">${has ? `${initIdx + 1}/${images.length}` : ''}</div>
                     <img class="sd-ui-image" src="${has ? encodeImageUrl(images[initIdx]) : ''}" style="display:${has ? 'block' : 'none'}" />
-                    <div class="${placeholderClass}" style="display:${has ? 'none' : 'block'}"><i class="fa-solid fa-image"></i> ${placeholderText}</div>
+                    <div class="${placeholderClass}" style="display:${has ? 'none' : 'block'}">${placeholderText}</div>
                 </div>
             </div>
         </div>`;
@@ -2683,6 +2695,16 @@ Order
                         </label>
                         <small style="color: #888; display: block; margin-left: 24px; margin-top: 4px;">
                             开启后多张图会按顺序逐张生成，一张完成后再生成下一张，避免并发请求过多
+                        </small>
+                    </div>
+                    
+                    <div style="margin-bottom: 12px;">
+                        <label style="display: flex; align-items: center; gap: 8px;">
+                            <input type="checkbox" id="sd-streaming-gen" ${settings.streamingGeneration ? 'checked' : ''}>
+                            <span style="font-weight: bold;">流式生图</span>
+                        </label>
+                        <small style="color: #888; display: block; margin-left: 24px; margin-top: 4px;">
+                            开启后在酒馆流式生成期间实时检测并生图，不等待生成完毕（注入模式）
                         </small>
                     </div>
                     
@@ -3436,6 +3458,9 @@ Order
                 // 顺序生图设置
                 settings.sequentialGeneration = $('#sd-sequential-gen').is(':checked');
 
+                // 流式生图设置
+                settings.streamingGeneration = $('#sd-streaming-gen').is(':checked');
+
                 // 独立API模式设置
                 settings.independentApiEnabled = $('#sd-indep-en').is(':checked');
                 settings.independentApiHistoryCount = parseInt($('#sd-indep-history').val()) || 4;
@@ -3465,6 +3490,211 @@ Order
         const trigger = (window.triggerSlash || window.parent?.triggerSlash);
         if (!trigger) throw new Error('API不可用');
         return await trigger.call(window.parent || window, cmd);
+    }
+
+    // ==================== 流式生图核心函数 ====================
+
+    /**
+     * 从内容中提取完整的 IMG_GEN 块
+     * @param {string} content - 消息内容
+     * @returns {Array<{prompt: string, index: number}>}
+     */
+    function extractCompleteImgGenBlocks(content) {
+        const regex = new RegExp(`${escapeRegExp(settings.startTag)}([\\s\\S]*?)${escapeRegExp(settings.endTag)}`, 'g');
+        const blocks = [];
+        let match;
+        let index = 0;
+        while ((match = regex.exec(content)) !== null) {
+            const prompt = match[1]
+                .replace(/\[no_gen\]/g, '')
+                .replace(/\[scheduled\]/g, '')
+                .replace(/(https?:\/\/|\/|output\/)[^\n]+?\.(png|jpg|jpeg|webp|gif)/gi, '')
+                .trim();
+            if (prompt) {
+                blocks.push({ prompt, index: index++ });
+            }
+        }
+        return blocks;
+    }
+
+    /**
+     * 处理流式 token
+     * @param {any} data - stream_token_received 事件数据
+     */
+    async function handleStreamToken(data) {
+        // 如果正在生图，跳过监听
+        if (streamingImageState.isGenerating) return;
+
+        // 获取当前消息内容（从 DOM 或事件数据）
+        let content = '';
+        try {
+            // 尝试从最新的 AI 消息 DOM 获取内容
+            const $lastMes = $('.mes:not([is_user="true"])').last();
+            if ($lastMes.length) {
+                content = $lastMes.find('.mes_text').text() || '';
+                streamingImageState.mesId = $lastMes.attr('mesid');
+            }
+        } catch (e) {
+            addLog('STREAMING', `获取内容失败: ${e.message}`);
+            return;
+        }
+
+        if (!content) return;
+
+        // 提取完整的 IMG_GEN 块
+        const blocks = extractCompleteImgGenBlocks(content);
+        const newBlockCount = blocks.length;
+
+        // 检查是否有新的块
+        if (newBlockCount > streamingImageState.processedCount) {
+            const newBlockIndex = streamingImageState.processedCount;
+            const newBlock = blocks[newBlockIndex];
+
+            addLog('STREAMING', `检测到第${newBlockIndex + 1}个提示词块，开始生图`);
+
+            // 暂停监听
+            streamingImageState.isGenerating = true;
+
+            try {
+                // 后台生图
+                const url = await streamingGenerateImage(newBlock.prompt);
+                
+                // 缓存结果
+                streamingImageState.results.push({
+                    prompt: newBlock.prompt,
+                    url: url,
+                    index: newBlockIndex
+                });
+
+                addLog('STREAMING', `第${newBlockIndex + 1}张图片生成完成: ${url ? '成功' : '失败'}`);
+            } catch (e) {
+                addLog('STREAMING', `第${newBlockIndex + 1}张图片生成失败: ${e.message}`);
+                // 失败也记录，之后回写时会标记为 scheduled
+                streamingImageState.results.push({
+                    prompt: newBlock.prompt,
+                    url: null,
+                    index: newBlockIndex
+                });
+            }
+
+            // 更新已处理数量
+            streamingImageState.processedCount = newBlockIndex + 1;
+            // 恢复监听
+            streamingImageState.isGenerating = false;
+        }
+    }
+
+    /**
+     * 后台执行生图（不更新UI）
+     * @param {string} prompt - 提示词
+     * @returns {Promise<string|null>} - 图片URL或null
+     */
+    async function streamingGenerateImage(prompt) {
+        const finalPrompt = `${settings.globalPrefix ? settings.globalPrefix + ', ' : ''}${prompt}${settings.globalSuffix ? ', ' + settings.globalSuffix : ''}`.replace(/,\s*,/g, ',').trim();
+        const cmd = `/sd quiet=true ${settings.globalNegative ? `negative="${escapeArg(settings.globalNegative)}"` : ''} ${finalPrompt}`;
+
+        addLog('STREAMING', `发送后台生图请求...`);
+
+        try {
+            const result = await triggerSlash(cmd);
+            const urls = (result || '').match(/(https?:\/\/|\/|output\/)[^\n]+?\.(png|jpg|jpeg|webp|gif)/gi) || [];
+            if (urls.length > 0) {
+                return urls[0].trim();
+            }
+            return null;
+        } catch (e) {
+            addLog('STREAMING', `生图请求失败: ${e.message}`);
+            return null;
+        }
+    }
+
+    /**
+     * 流式结束，回写结果并渲染UI
+     * @param {number} mesId - 消息ID
+     */
+    async function finalizeStreamingGeneration(mesId) {
+        addLog('STREAMING', `流式结束，开始回写结果（共${streamingImageState.results.length}个）`);
+
+        // 重置流式状态
+        streamingImageState.isStreaming = false;
+
+        // 如果没有结果，直接走正常流程
+        if (streamingImageState.results.length === 0) {
+            addLog('STREAMING', '没有流式生图结果，使用正常流程');
+            streamingImageState = {
+                isStreaming: false,
+                isGenerating: false,
+                mesId: null,
+                processedCount: 0,
+                results: [],
+                currentAbortController: null
+            };
+            return;
+        }
+
+        const chat = SillyTavern.chat[parseInt(mesId)];
+        if (!chat) {
+            addLog('STREAMING', `消息${mesId}不存在`);
+            return;
+        }
+
+        let content = chat.mes;
+        const regex = new RegExp(`${escapeRegExp(settings.startTag)}([\\s\\S]*?)${escapeRegExp(settings.endTag)}`, 'g');
+        const matches = [...content.matchAll(regex)];
+
+        // 按索引从后往前替换，避免位置偏移
+        const sortedResults = [...streamingImageState.results].sort((a, b) => b.index - a.index);
+
+        for (const result of sortedResults) {
+            if (result.index < matches.length) {
+                const match = matches[result.index];
+                const parsed = parseBlockContent(match[1]);
+                
+                let newImages = parsed.images;
+                let newScheduled = false;
+
+                if (result.url) {
+                    // 有URL，添加到图片列表
+                    newImages = [...new Set([...parsed.images, result.url])];
+                } else {
+                    // 无URL，标记为 scheduled
+                    newScheduled = true;
+                }
+
+                const newBlock = settings.startTag + '\n' + rebuildBlockString(parsed.prompt, newImages, false, newScheduled) + '\n' + settings.endTag;
+                content = content.substring(0, match.index) + newBlock + content.substring(match.index + match[0].length);
+            }
+        }
+
+        // 更新消息
+        chat.mes = content;
+        try {
+            await SillyTavern.context.saveChat();
+            await SillyTavern.eventSource.emit('message_updated', parseInt(mesId));
+            addLog('STREAMING', `结果回写完成`);
+        } catch (e) {
+            addLog('STREAMING', `结果回写失败: ${e.message}`);
+        }
+
+        // 重置状态
+        streamingImageState = {
+            isStreaming: false,
+            isGenerating: false,
+            mesId: null,
+            processedCount: 0,
+            results: [],
+            currentAbortController: null
+        };
+
+        // 延迟后渲染UI，处理剩余任务
+        setTimeout(() => {
+            processChatDOM();
+        }, 500);
+
+        if (typeof toastr !== 'undefined') {
+            const successCount = streamingImageState.results.filter(r => r.url).length;
+            toastr.success(`🎨 流式生图完成 (${successCount}/${streamingImageState.results.length}张)`, null, { timeOut: 3000 });
+        }
     }
 
     function handleContextInjection(data) {
@@ -3548,6 +3778,34 @@ Order
                     }
                 }, 500);  // 延迟500ms，确保生成完全结束
             }
+        });
+
+        // 4. 流式生图模式：监听 STREAM_TOKEN_RECEIVED 事件
+        eventOn(tavern_events.STREAM_TOKEN_RECEIVED, (data) => {
+            if (!settings.streamingGeneration || !settings.enabled) return;
+            handleStreamToken(data);
+        });
+
+        // 5. 流式生图模式：监听 GENERATION_STARTED（重置状态）
+        eventOn(tavern_events.GENERATION_STARTED, () => {
+            if (!settings.streamingGeneration || !settings.enabled) return;
+            // 重置流式生图状态
+            streamingImageState = {
+                isStreaming: true,
+                isGenerating: false,
+                mesId: null,
+                processedCount: 0,
+                results: [],
+                currentAbortController: null
+            };
+            addLog('STREAMING', '流式生图：开始监听');
+        });
+
+        // 6. 流式生图模式：监听 MESSAGE_RECEIVED（流式结束，回写结果）
+        eventOn(tavern_events.MESSAGE_RECEIVED, (mesId) => {
+            if (!settings.streamingGeneration || !settings.enabled) return;
+            if (!streamingImageState.isStreaming) return;
+            finalizeStreamingGeneration(mesId);
         });
     }
 
