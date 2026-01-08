@@ -2229,8 +2229,10 @@ Order
                             });
                             addLog('SEQUENTIAL', `任务加入队列: ${taskKey}, 当前队列长度: ${sequentialQueue.length}`);
                         }
-                        // 标记为 scheduled 状态（不在这里启动队列，等所有任务加入后再统一启动）
+                        // 标记为 scheduled 状态
                         updateChatData(mesId, bIdx, decodeURIComponent($w.attr('data-prompt')), [], false, true);
+                        // 启动队列处理
+                        processSequentialQueue();
                     } else {
                         // 原有并行模式逻辑
                         updateChatData(mesId, bIdx, decodeURIComponent($w.attr('data-prompt')), [], false, true).then(() => {
@@ -2253,11 +2255,6 @@ Order
                 }
             });
         });
-
-        // 顺序生图模式：等所有任务加入队列后再统一启动处理
-        if (settings.sequentialGeneration && sequentialQueue.length > 0 && !sequentialProcessing) {
-            setTimeout(() => processSequentialQueue(), 100);
-        }
     }
 
 
@@ -2269,25 +2266,19 @@ Order
         }
 
         sequentialProcessing = true;
-        const totalTasks = sequentialQueue.length;
         let completedTasks = 0;
-        addLog('SEQUENTIAL', `开始处理队列，共 ${totalTasks} 个任务`);
+        addLog('SEQUENTIAL', `开始处理队列`);
 
         // 显示进度 toastr（可关闭，不影响执行）
         let progressToast = null;
         const updateProgress = () => {
-            const remaining = sequentialQueue.length;
-            const current = completedTasks + 1;
-            const total = completedTasks + remaining + (remaining > 0 ? 0 : 0);
             if (typeof toastr !== 'undefined') {
                 if (progressToast) toastr.clear(progressToast);
-                if (remaining > 0 || current <= totalTasks) {
-                    progressToast = toastr.info(
-                        `🎨 顺序生图中: ${current}/${totalTasks}`,
-                        '生图队列',
-                        { timeOut: 0, extendedTimeOut: 0, closeButton: true, tapToDismiss: false }
-                    );
-                }
+                progressToast = toastr.info(
+                    `🎨 正在生成第 ${completedTasks + 1} 张...`,
+                    '顺序生图',
+                    { timeOut: 0, extendedTimeOut: 0, closeButton: true, tapToDismiss: false }
+                );
             }
         };
         updateProgress();
