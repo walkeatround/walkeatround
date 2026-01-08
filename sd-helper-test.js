@@ -2259,7 +2259,28 @@ Order
         }
 
         sequentialProcessing = true;
-        addLog('SEQUENTIAL', `开始处理队列，共 ${sequentialQueue.length} 个任务`);
+        const totalTasks = sequentialQueue.length;
+        let completedTasks = 0;
+        addLog('SEQUENTIAL', `开始处理队列，共 ${totalTasks} 个任务`);
+
+        // 显示进度 toastr（可关闭，不影响执行）
+        let progressToast = null;
+        const updateProgress = () => {
+            const remaining = sequentialQueue.length;
+            const current = completedTasks + 1;
+            const total = completedTasks + remaining + (remaining > 0 ? 0 : 0);
+            if (typeof toastr !== 'undefined') {
+                if (progressToast) toastr.clear(progressToast);
+                if (remaining > 0 || current <= totalTasks) {
+                    progressToast = toastr.info(
+                        `🎨 顺序生图中: ${current}/${totalTasks}`,
+                        '生图队列',
+                        { timeOut: 0, extendedTimeOut: 0, closeButton: true, tapToDismiss: false }
+                    );
+                }
+            }
+        };
+        updateProgress();
 
         while (sequentialQueue.length > 0) {
             const task = sequentialQueue.shift();
@@ -2271,6 +2292,8 @@ Order
             const $currentWrap = $(`.mes[mesid="${mesId}"] .sd-ui-wrap[data-block-idx="${blockIdx}"]`);
             if (!$currentWrap.length) {
                 addLog('SEQUENTIAL', `任务已失效（DOM不存在），跳过`);
+                completedTasks++;
+                updateProgress();
                 continue;
             }
 
@@ -2278,6 +2301,8 @@ Order
             const currentImages = JSON.parse(decodeURIComponent($currentWrap.attr('data-images') || '[]'));
             if (currentImages.length > 0) {
                 addLog('SEQUENTIAL', `任务已完成（已有图片），跳过`);
+                completedTasks++;
+                updateProgress();
                 continue;
             }
 
@@ -2296,15 +2321,26 @@ Order
 
             // 等待生图完成
             await handleGeneration(state);
+            completedTasks++;
 
             // 生图完成后等待指定间隔再处理下一张
             const intervalSeconds = settings.generateIntervalSeconds || 1;
             addLog('SEQUENTIAL', `任务完成，等待 ${intervalSeconds} 秒后处理下一个`);
+
+            // 更新进度
+            updateProgress();
+
             await new Promise(resolve => setTimeout(resolve, intervalSeconds * 1000));
         }
 
         sequentialProcessing = false;
         addLog('SEQUENTIAL', '队列处理完成');
+
+        // 清除进度 toastr 并显示完成提示
+        if (progressToast) toastr.clear(progressToast);
+        if (typeof toastr !== 'undefined') {
+            toastr.success(`✅ 顺序生图完成，共 ${completedTasks} 张`, '生图队列', { timeOut: 3000 });
+        }
     }
 
 
@@ -2614,7 +2650,7 @@ Order
                             <span style="font-weight: bold;">启用请求超时</span>
                         </label>
                         <small style="color: #888; display: block; margin-left: 24px; margin-top: 4px;">
-                            生图请求超过指定时间后自动取消，避免永远卡在"请求中"
+                            生图请求超过指定时间后自动取消再重试，避免永远卡在"请求中"
                         </small>
                         <div style="margin-left: 24px; margin-top: 8px;">
                             <label style="font-size: 12px;">
