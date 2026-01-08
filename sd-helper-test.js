@@ -2566,15 +2566,17 @@ Order
                     <h4 style="margin-top:0; margin-bottom:15px;">功能开关</h4>
                     
                     <div style="margin-bottom: 12px;">
-                        <label style="display: flex; align-items: center; gap: 8px;">
-                            <input type="checkbox" id="sd-en" ${settings.enabled ? 'checked' : ''}>
-                            <span style="font-weight: bold;">启用解析生图</span>
-                            <span class="sd-toggle-arrow" data-target="sd-sub-en">▾</span>
-                        </label>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                                <input type="checkbox" id="sd-en" ${settings.enabled ? 'checked' : ''}>
+                                <span style="font-weight: bold;">启用解析生图</span>
+                            </label>
+                            <span class="sd-toggle-arrow collapsed" data-target="sd-sub-en">▾</span>
+                        </div>
                         <small style="color: #888; display: block; margin-left: 24px; margin-top: 4px;">
                             自动识别 [IMG_GEN]...[/IMG_GEN] 标签并生成图片UI框
                         </small>
-                        <div id="sd-sub-en" class="sd-sub-settings" style="display: flex; flex-wrap: wrap; gap: 15px; align-items: center;">
+                        <div id="sd-sub-en" class="sd-sub-settings collapsed" style="display: flex; flex-wrap: wrap; gap: 15px; align-items: center;">
                             <label style="font-size: 10px; display: flex; align-items: center; gap: 5px;">
                                 <span style="color: var(--nm-text-muted);">多图间隔:</span>
                                 <input type="number" id="sd-gen-interval" class="text_pole"
@@ -2603,15 +2605,17 @@ Order
                     </div>
                     
                     <div style="margin-bottom: 12px;">
-                        <label style="display: flex; align-items: center; gap: 8px;">
-                            <input type="checkbox" id="sd-inj-en" ${settings.injectEnabled ? 'checked' : ''}>
-                            <span style="font-weight: bold;">启用注入</span>
-                            <span class="sd-toggle-arrow" data-target="sd-sub-inj">▾</span>
-                        </label>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                                <input type="checkbox" id="sd-inj-en" ${settings.injectEnabled ? 'checked' : ''}>
+                                <span style="font-weight: bold;">启用注入</span>
+                            </label>
+                            <span class="sd-toggle-arrow collapsed" data-target="sd-sub-inj">▾</span>
+                        </div>
                         <small style="color: #888; display: block; margin-left: 24px; margin-top: 4px;">
                             向AI发送请求前，自动注入提示词模版和人物特征库
                         </small>
-                        <div id="sd-sub-inj" class="sd-sub-settings" style="display: flex; align-items: center; gap: 15px;">
+                        <div id="sd-sub-inj" class="sd-sub-settings collapsed" style="display: flex; align-items: center; gap: 15px;">
                             <label style="font-size: 12px;">
                                 注入深度：
                                 <input type="number" id="sd-inj-depth" class="text_pole" value="${settings.injectDepth}" min="0" max="20" style="width:60px;">
@@ -2628,15 +2632,17 @@ Order
                     </div>
                     
                     <div style="margin-bottom: 12px;">
-                        <label style="display: flex; align-items: center; gap: 8px;">
-                            <input type="checkbox" id="sd-indep-en" ${settings.independentApiEnabled ? 'checked' : ''}>
-                            <span style="font-weight: bold;">启用独立生图模式</span>
-                            <span class="sd-toggle-arrow" data-target="sd-sub-indep">▾</span>
-                        </label>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                                <input type="checkbox" id="sd-indep-en" ${settings.independentApiEnabled ? 'checked' : ''}>
+                                <span style="font-weight: bold;">启用独立生图模式</span>
+                            </label>
+                            <span class="sd-toggle-arrow collapsed" data-target="sd-sub-indep">▾</span>
+                        </div>
                         <small style="color: #888; display: block; margin-left: 24px; margin-top: 4px;">
                             开启后停止注入，改为消息接收后调用独立API分析并插入提示词
                         </small>
-                        <div id="sd-sub-indep" class="sd-sub-settings" style="display: flex; align-items: center; gap: 15px;">
+                        <div id="sd-sub-indep" class="sd-sub-settings collapsed" style="display: flex; align-items: center; gap: 15px;">
                             <label style="font-size: 12px;">
                                 历史消息数：
                                 <input type="number" id="sd-indep-history" class="text_pole" value="${settings.independentApiHistoryCount}" min="1" max="10" style="width:60px;">
@@ -2649,15 +2655,17 @@ Order
                     </div>
                     
                     <div style="margin-bottom: 12px;">
-                        <label style="display: flex; align-items: center; gap: 8px;">
-                            <input type="checkbox" id="sd-timeout-en" ${settings.timeoutEnabled ? 'checked' : ''}>
-                            <span style="font-weight: bold;">启用请求超时</span>
-                            <span class="sd-toggle-arrow" data-target="sd-sub-timeout">▾</span>
-                        </label>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                                <input type="checkbox" id="sd-timeout-en" ${settings.timeoutEnabled ? 'checked' : ''}>
+                                <span style="font-weight: bold;">启用请求超时</span>
+                            </label>
+                            <span class="sd-toggle-arrow collapsed" data-target="sd-sub-timeout">▾</span>
+                        </div>
                         <small style="color: #888; display: block; margin-left: 24px; margin-top: 4px;">
                             生图请求超过指定时间后自动取消再重试，避免永远卡在"请求中"
                         </small>
-                        <div id="sd-sub-timeout" class="sd-sub-settings">
+                        <div id="sd-sub-timeout" class="sd-sub-settings collapsed">
                             <label style="font-size: 12px;">
                                 超时时间(秒)：
                                 <input type="number" id="sd-timeout-seconds" class="text_pole" 
@@ -2679,14 +2687,17 @@ Order
                     </div>
                     
                     <div style="margin-bottom: 12px;">
-                        <label style="display: flex; align-items: center; gap: 8px;">
-                            <input type="checkbox" id="sd-auto-refresh" ${settings.autoRefresh ? 'checked' : ''}>
-                            <span style="font-weight: bold;">自动修复UI</span>
-                        </label>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                                <input type="checkbox" id="sd-auto-refresh" ${settings.autoRefresh ? 'checked' : ''}>
+                                <span style="font-weight: bold;">自动修复UI</span>
+                            </label>
+                            <span class="sd-toggle-arrow collapsed" data-target="sd-sub-autorefresh">▾</span>
+                        </div>
                         <small style="color: #888; display: block; margin-left: 24px; margin-top: 4px;">
                             ⚠️ 自动扫描并修复UI（可能引起问题，无必要不开）
                         </small>
-                        <div style="margin-left: 24px; margin-top: 8px;">
+                        <div id="sd-sub-autorefresh" class="sd-sub-settings collapsed">
                             <label style="font-size: 12px;">
                                 修复间隔(秒)：
                                 <input type="number" id="sd-auto-refresh-interval" 
