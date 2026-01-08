@@ -130,7 +130,7 @@ highly detailed, masterpiece, best quality
     let externalTemplatesLoaded = false;
 
     // 🔧 配置：模版文件的远程URL
-    const TEMPLATES_URL = 'https://cdn.jsdelivr.net/gh/walkeatround/walkeatround@master/default-templates01080225.js';
+    const TEMPLATES_URL = 'https://cdn.jsdelivr.net/gh/walkeatround/walkeatround@master/default-templates01090300.js';
 
     /**
      * 从远程URL加载外部默认模版文件
@@ -1466,7 +1466,7 @@ Order
      * @returns {Object} - toastr对象
      */
     function showIndependentApiProgress(message) {
-        return toastr.info(message + '<br><small style="color: #ffcc00; opacity: 0.9;">⏹️ 点击此处终止</small>', '🎨 独立API生图', {
+        return toastr.info(message + '<br><small style="color: #ffcc00; opacity: 0.9;">⏹️ 点击此处终止</small>', '🎨 独立API生词', {
             timeOut: 0,
             extendedTimeOut: 0,
             closeButton: true,
@@ -2425,7 +2425,7 @@ Order
                     <div class="sd-zone delete" style="display:${has ? 'block' : 'none'}"></div>
                     <div class="sd-ui-msg">${has ? `${initIdx + 1}/${images.length}` : ''}</div>
                     <img class="sd-ui-image" src="${has ? encodeImageUrl(images[initIdx]) : ''}" style="display:${has ? 'block' : 'none'}" />
-                    <div class="${placeholderClass}" style="display:${has ? 'none' : 'block'}"><i class="fa-solid fa-image"></i> ${placeholderText}</div>
+                    <div class="${placeholderClass}" style="display:${has ? 'none' : 'block'}">${placeholderText}</div>
                 </div>
             </div>
         </div>`;
