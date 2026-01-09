@@ -2582,21 +2582,21 @@ Order
                                 <input type="number" id="sd-gen-interval" class="text_pole"
                                        value="${settings.generateIntervalSeconds || 1}" 
                                        min="0.5" max="30" step="0.5"
-                                       style="width: 40px;"> <span style="color: var(--nm-text-muted);">秒</span>
+                                       style="width: 60px;"> <span style="color: var(--nm-text-muted);">秒</span>
                             </label>
                             <label style="font-size: 10px; display: flex; align-items: center; gap: 5px;">
                                 <span style="color: var(--nm-text-muted);">失败重试:</span>
                                 <input type="number" id="sd-retry-count" class="text_pole"
                                        value="${settings.retryCount || 3}" 
                                        min="0" max="10" step="1"
-                                       style="width: 40px;"> <span style="color: var(--nm-text-muted);">次</span>
+                                       style="width: 50px;"> <span style="color: var(--nm-text-muted);">次</span>
                             </label>
                             <label style="font-size: 10px; display: flex; align-items: center; gap: 5px;">
                                 <span style="color: var(--nm-text-muted);">重试间隔:</span>
                                 <input type="number" id="sd-retry-delay" class="text_pole"
                                        value="${settings.retryDelaySeconds || 1}" 
                                        min="0.5" max="30" step="0.5"
-                                       style="width: 40px;"> <span style="color: var(--nm-text-muted);">秒</span>
+                                       style="width: 60px;"> <span style="color: var(--nm-text-muted);">秒</span>
                             </label>
                             <small style="color: #666; display: block; width: 100%; margin-top: 4px;">
                                 多图间隔：多张图之间的请求间隔；重试：失败时自动重试的次数和间隔
