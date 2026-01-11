@@ -58,7 +58,12 @@
     const STORAGE_KEY = 'sd_gen_settings';
     const TEMPLATES_KEY = 'sd_gen_templates';
     const NO_GEN_FLAG = '[no_gen]';
-    const SCHEDULED_FLAG = '[scheduled]';\n\n    // 模版编辑器当前选中的索引（移到全局避免每次打开弹窗时重置）\n    let aiTplCurrentIndex = 0;\n    let indepTplCurrentIndex = 0;\n\n    const RUNTIME_LOGS = [];
+    const SCHEDULED_FLAG = '[scheduled]';
+    // 模版编辑器当前选中的索引（移到全局避免每次打开弹窗时重置）
+    let aiTplCurrentIndex = 0;
+    let indepTplCurrentIndex = 0;
+    
+    const RUNTIME_LOGS = [];
     function addLog(type, msg) {
         const logLine = `[${new Date().toLocaleTimeString()}] [${type}] ${msg}`;
         RUNTIME_LOGS.push(logLine);
