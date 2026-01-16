@@ -2105,7 +2105,7 @@ highly detailed, masterpiece, best quality
         const now = new Date();
         const pad = (n, len = 2) => String(n).padStart(len, '0');
         const timestamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}@${pad(now.getHours())}h${pad(now.getMinutes())}m${pad(now.getSeconds())}s${pad(now.getMilliseconds(), 3)}ms`;
-        const filename = `${characterName}_${timestamp}`;
+        const filename = `${characterName}_${timestamp}.${format}`;
 
         addLog('CONNECTOR', `上传图片到 SillyTavern: ${filename}.${format}`);
 
